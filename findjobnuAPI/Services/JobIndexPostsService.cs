@@ -1,4 +1,5 @@
-﻿using FindjobnuService.DTOs.Responses;
+﻿using FindjobnuService.DTOs.Requests;
+using FindjobnuService.DTOs.Responses;
 using FindjobnuService.Models;
 using FindjobnuService.Repositories.Context;
 using Microsoft.EntityFrameworkCore;
@@ -250,17 +251,28 @@ WHERE (@postedAfter IS NULL OR j.Published >= @postedAfter)
             return new PagedList<JobIndexPosts>(jobs.Count, 10, page, jobs);
         }
 
-        public async Task<PagedList<JobIndexPosts>> GetRecommendedJobsByUserAndProfile(string userId, int page, int pageSize)
+        public async Task<PagedList<JobIndexPosts>> GetRecommendedJobsByUserAndProfile(string userId, RecommendedJobsRequest request)
         {
+            var page = request?.Page ?? 1;
+            var pageSize = request?.PageSize ?? 20;
             if (page < 1) page = 1;
             if (pageSize < 1) pageSize = 20;
 
             var cacheKey = $"rec:{userId}:{page}:{pageSize}";
-            if (_cache.TryGetValue<PagedList<JobIndexPosts>>(cacheKey, out var cached) && cached != null)
+            if (!_cache.TryGetValue<PagedList<JobIndexPosts>>(cacheKey, out var baseResult) || baseResult == null)
             {
-                return cached;
+                baseResult = await BuildRecommendations(userId, page, pageSize);
+                _cache.Set(cacheKey, baseResult, new MemoryCacheEntryOptions
+                {
+                    AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(2)
+                });
             }
 
+            return ApplyRecommendationFilters(baseResult, request, page, pageSize);
+        }
+
+        private async Task<PagedList<JobIndexPosts>> BuildRecommendations(string userId, int page, int pageSize)
+        {
             PagedList<JobIndexPosts> result;
 
             var profile = await _db.Profiles
@@ -337,36 +349,77 @@ JOIN dbo.JobIndexPostingsExtended j ON j.JobID = k.JobID";
             else
             {
                 var kw = keywords.Select(k => k.ToLowerInvariant()).ToList();
-                var q = _db.JobIndexPosts.Include(j => j.Categories).AsQueryable();
+                var jobs = await _db.JobIndexPosts.Include(j => j.Categories).AsNoTracking().ToListAsync();
+                var jobKeywords = await _db.JobKeywords.AsNoTracking().ToListAsync();
 
-                q = q.Where(j =>
+                var filteredJobs = jobs.Where(j =>
                     (j.JobTitle != null && kw.Any(k => j.JobTitle!.ToLower().Contains(k))) ||
                     (j.CompanyName != null && kw.Any(k => j.CompanyName!.ToLower().Contains(k))) ||
                     (j.JobDescription != null && kw.Any(k => j.JobDescription!.ToLower().Contains(k))) ||
                     (j.JobLocation != null && kw.Any(k => j.JobLocation!.ToLower().Contains(k))) ||
                     (j.Categories.Any(c => c.Name != null && kw.Any(k => c.Name.ToLower().Contains(k)))) ||
-                    _db.JobKeywords.Any(kj => kj.JobID == j.JobID && kj.Keyword != null && kw.Any(k => kj.Keyword.ToLower().Contains(k)))
-                );
+                    jobKeywords.Any(kj => kj.JobID == j.JobID && kj.Keyword != null && kw.Any(k => kj.Keyword.ToLower().Contains(k)))
+                ).ToList();
 
-                var total = await q.CountAsync();
+                var total = filteredJobs.Count;
                 if (total == 0) return new PagedList<JobIndexPosts>(0, pageSize, page, []);
 
-                var items = await q
+                var items = filteredJobs
                     .OrderByDescending(j => j.Published)
                     .Skip((page - 1) * pageSize)
                     .Take(pageSize)
-                    .AsNoTracking()
-                    .ToListAsync();
+                    .ToList();
 
                 result = new PagedList<JobIndexPosts>(total, pageSize, page, items);
             }
 
-            _cache.Set(cacheKey, result, new MemoryCacheEntryOptions
-            {
-                AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(2)
-            });
-
             return result;
+        }
+
+        private PagedList<JobIndexPosts> ApplyRecommendationFilters(PagedList<JobIndexPosts> baseResult, RecommendedJobsRequest request, int page, int pageSize)
+        {
+            if (request == null) return baseResult;
+
+            var filtered = baseResult.Items ?? Enumerable.Empty<JobIndexPosts>();
+
+            var normalizedLocation = string.IsNullOrWhiteSpace(request.Location) ? null : request.Location.Trim();
+            var locationTokens = normalizedLocation?
+                .Split(new[] { ' ', ',', '-' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(token => !string.IsNullOrWhiteSpace(token))
+                .ToArray();
+            var primaryLocationToken = locationTokens?.FirstOrDefault();
+
+            if (request.PostedAfter.HasValue)
+            {
+                filtered = filtered.Where(j => j.Published >= request.PostedAfter.Value);
+            }
+            if (request.PostedBefore.HasValue)
+            {
+                filtered = filtered.Where(j => j.Published <= request.PostedBefore.Value);
+            }
+            if (!string.IsNullOrWhiteSpace(primaryLocationToken))
+            {
+                var locationToken = primaryLocationToken;
+                filtered = filtered.Where(j => !string.IsNullOrWhiteSpace(j.JobLocation) && j.JobLocation!.IndexOf(locationToken, StringComparison.OrdinalIgnoreCase) >= 0);
+            }
+            if (request.CategoryId.HasValue)
+            {
+                var categoryId = request.CategoryId.Value;
+                filtered = filtered.Where(j => j.Categories != null && j.Categories.Any(c => c.CategoryID == categoryId));
+            }
+            if (!string.IsNullOrWhiteSpace(request.SearchTerm))
+            {
+                var term = request.SearchTerm.Trim().ToLowerInvariant();
+                filtered = filtered.Where(j =>
+                    (!string.IsNullOrEmpty(j.JobTitle) && j.JobTitle.ToLower().Contains(term)) ||
+                    (!string.IsNullOrEmpty(j.CompanyName) && j.CompanyName.ToLower().Contains(term)) ||
+                    (!string.IsNullOrEmpty(j.JobDescription) && j.JobDescription.ToLower().Contains(term)) ||
+                    _db.JobKeywords.Any(k => k.JobID == j.JobID && k.Keyword != null && k.Keyword.ToLower().Contains(term))
+                );
+            }
+
+            var filteredList = filtered.ToList();
+            return new PagedList<JobIndexPosts>(filteredList.Count, pageSize, page, filteredList);
         }
 
         private static HashSet<string> GetKeywordsFromProfile(Profile profile)

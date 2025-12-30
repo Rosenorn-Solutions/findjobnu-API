@@ -9,7 +9,7 @@ using System.Security.Claims;
 
 namespace FindjobnuService.Endpoints;
 
-public static class JobIndexPostsEndpoints
+public static class JobPostsEndpoints
 {
     public static void MapJobIndexPostsEndpoints(this IEndpointRouteBuilder routes)
     {
@@ -105,17 +105,15 @@ public static class JobIndexPostsEndpoints
         .WithName("GetSavedJobPostsByUser");
 
         group.MapGet("/recommended-jobs", async Task<Results<Ok<PagedResponse<JobIndexPostResponse>>, UnauthorizedHttpResult, BadRequest<string>, NoContent>> (
-            [FromQuery] int page,
+            [AsParameters] RecommendedJobsRequest request,
             HttpContext httpContext,
-            [FromServices] IJobIndexPostsService jobService,
-            [FromServices] IProfileService profileService,
-            [FromQuery] int pageSize = 20) =>
+            [FromServices] IJobIndexPostsService jobService) =>
         {
             var userId = httpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userId))
                 return TypedResults.Unauthorized();
 
-            var pagedList = await jobService.GetRecommendedJobsByUserAndProfile(userId, page, pageSize);
+            var pagedList = await jobService.GetRecommendedJobsByUserAndProfile(userId, request);
             var dto = JobIndexPostsMapper.ToPagedDto(pagedList!);
             return dto.Items.Any() ? TypedResults.Ok(dto) :
                 TypedResults.NoContent();

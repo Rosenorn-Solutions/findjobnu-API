@@ -1,4 +1,5 @@
-﻿using FindjobnuService.Models;
+﻿using FindjobnuService.DTOs.Requests;
+using FindjobnuService.Models;
 using FindjobnuService.Repositories.Context;
 using FindjobnuService.Services;
 using Microsoft.EntityFrameworkCore;
@@ -170,6 +171,41 @@ namespace FindjobnuTesting
             Assert.Equal(2, result.TotalCount);
             Assert.Contains(result.Items, j => j.JobLocation == "København V");
             Assert.Contains(result.Items, j => j.JobLocation == "København K");
+        }
+
+        [Fact]
+        public async Task GetRecommendedJobsByUserAndProfile_AppliesFiltersAfterRecommendation()
+        {
+            var options = new DbContextOptionsBuilder<FindjobnuContext>()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .Options;
+            using var context = new FindjobnuContext(options);
+            var logger = new Mock<ILogger<JobIndexPostsService>>().Object;
+
+            var itCategory = new Category { Name = "IT" };
+            var designCategory = new Category { Name = "Design" };
+            context.Categories.AddRange(itCategory, designCategory);
+            context.JobIndexPosts.AddRange(
+                new JobIndexPosts { JobID = 10, JobTitle = "C# Developer", JobLocation = "NY", Categories = [itCategory], Published = DateTime.UtcNow },
+                new JobIndexPosts { JobID = 20, JobTitle = "Designer", JobLocation = "NY", Categories = [designCategory], Published = DateTime.UtcNow }
+            );
+            context.Profiles.Add(new Profile
+            {
+                Id = 1,
+                UserId = "user1",
+                BasicInfo = new BasicInfo { FirstName = "Test", LastName = "User", JobTitle = "Developer" },
+                Keywords = new List<string> { "Developer", "Designer" }
+            });
+            await context.SaveChangesAsync();
+
+            var service = new JobIndexPostsService(context, logger);
+            var request = new RecommendedJobsRequest(null, "NY", itCategory.CategoryID, null, null, 1, 10);
+
+            var result = await service.GetRecommendedJobsByUserAndProfile("user1", request);
+
+            Assert.NotNull(result);
+            Assert.Single(result.Items);
+            Assert.Equal(10, result.Items.First().JobID);
         }
     }
 }

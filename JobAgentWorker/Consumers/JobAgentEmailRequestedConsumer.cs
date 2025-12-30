@@ -1,3 +1,4 @@
+using FindjobnuService.DTOs.Requests;
 using FindjobnuService.MessageContracts;
 using FindjobnuService.Models;
 using FindjobnuService.Repositories.Context;
@@ -66,7 +67,7 @@ namespace JobAgentWorkerService.Consumers
             }
 
             // Fetch top recommended jobs for this user; page 1
-            var recommended = await _jobs.GetRecommendedJobsByUserAndProfile(msg.UserId, 1, 20);
+            var recommended = await _jobs.GetRecommendedJobsByUserAndProfile(msg.UserId, new RecommendedJobsRequest(null, null, null, null, null, 1, 20));
             var filteredItems = ApplyFilters(recommended.Items ?? Enumerable.Empty<JobIndexPosts>(), agent)
                 .Take(10)
                 .ToList();
