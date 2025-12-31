@@ -11,6 +11,6 @@ namespace FindjobnuService.Services
         Task<JobIndexPosts> GetByIdAsync(int id);
         Task<CategoriesResponse> GetCategoriesAsync();
         Task<PagedList<JobIndexPosts>> GetSavedJobsByUserId(string userId, int page);
-        Task<PagedList<JobIndexPosts>> GetRecommendedJobsByUserAndProfile(string userId, RecommendedJobsRequest request);
+        Task<PagedList<JobIndexPosts>> GetRecommendedJobsByUserAndProfile(string userId, RecommendedJobsRequest? request);
     }
 }

@@ -112,6 +112,8 @@ public static class JobPostsEndpoints
             var userId = httpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userId))
                 return TypedResults.Unauthorized();
+            if (request == null)
+                return TypedResults.BadRequest("Invalid request parameters.");
 
             var pagedList = await jobService.GetRecommendedJobsByUserAndProfile(userId, request);
             var dto = JobIndexPostsMapper.ToPagedDto(pagedList!);

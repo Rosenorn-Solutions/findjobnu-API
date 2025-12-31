@@ -251,7 +251,7 @@ WHERE (@postedAfter IS NULL OR j.Published >= @postedAfter)
             return new PagedList<JobIndexPosts>(jobs.Count, 10, page, jobs);
         }
 
-        public async Task<PagedList<JobIndexPosts>> GetRecommendedJobsByUserAndProfile(string userId, RecommendedJobsRequest request)
+        public async Task<PagedList<JobIndexPosts>> GetRecommendedJobsByUserAndProfile(string userId, RecommendedJobsRequest? request)
         {
             var page = request?.Page ?? 1;
             var pageSize = request?.PageSize ?? 20;
@@ -376,7 +376,7 @@ JOIN dbo.JobIndexPostingsExtended j ON j.JobID = k.JobID";
             return result;
         }
 
-        private PagedList<JobIndexPosts> ApplyRecommendationFilters(PagedList<JobIndexPosts> baseResult, RecommendedJobsRequest request, int page, int pageSize)
+        private PagedList<JobIndexPosts> ApplyRecommendationFilters(PagedList<JobIndexPosts> baseResult, RecommendedJobsRequest? request, int page, int pageSize)
         {
             if (request == null) return baseResult;
 
