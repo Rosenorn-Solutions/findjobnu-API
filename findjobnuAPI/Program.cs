@@ -12,6 +12,10 @@ using FindjobnuService.Endpoints;
 using Microsoft.AspNetCore.ResponseCompression;
 using System.IO.Compression;
 using SharedInfrastructure.Cities;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+using SharedInfrastructure.Health;
+using Prometheus;
 
 namespace FindjobnuService
 {
@@ -122,6 +126,12 @@ namespace FindjobnuService
             builder.Services.AddScoped<ICvReadabilityService, CvReadabilityService>();
             builder.Services.AddScoped<IJobAgentService, JobAgentService>();
 
+            builder.Services.AddSingleton(new ApplicationHealthMetadata(DateTimeOffset.UtcNow));
+
+            builder.Services.AddHealthChecks()
+                .AddCheck("self", () => HealthCheckResult.Healthy(), tags: new[] { "live" })
+                .AddDbContextCheck<FindjobnuContext>("database", tags: new[] { "ready" });
+
             // Response compression for payloads (enables Brotli/gzip)
             builder.Services.AddResponseCompression(options =>
             {
@@ -187,11 +197,30 @@ namespace FindjobnuService
                 app.UseHttpsRedirection();
             }
 
+        app.UseHttpMetrics();
+
             // Enable response compression middleware
             app.UseResponseCompression();
 
             // Enable response caching middleware
             app.UseResponseCaching();
+
+            app.MapHealthChecks("/healthz/live", new HealthCheckOptions
+            {
+                Predicate = r => r.Tags.Contains("live"),
+                ResponseWriter = HealthCheckResponseWriter.WriteDetailedResponse
+            });
+
+            app.MapHealthChecks("/healthz/ready", new HealthCheckOptions
+            {
+                Predicate = r => r.Tags.Contains("ready"),
+                ResponseWriter = HealthCheckResponseWriter.WriteDetailedResponse
+            });
+
+            app.MapHealthChecks("/healthz", new HealthCheckOptions
+            {
+                ResponseWriter = HealthCheckResponseWriter.WriteDetailedResponse
+            });
 
             app.UseAuthentication();
             app.UseAuthorization();
@@ -201,6 +230,8 @@ namespace FindjobnuService
             app.MapProfileEndpoints();
             app.MapCvReadabilityEndpoints();
             app.MapJobAgentEndpoints();
+
+            app.MapMetrics("/metrics");
 
             app.Run();
         }

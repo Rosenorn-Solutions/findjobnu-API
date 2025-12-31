@@ -10,6 +10,10 @@ using Microsoft.IdentityModel.Tokens;
 using Serilog;
 using System.Text;
 using SharedInfrastructure.Cities;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+using SharedInfrastructure.Health;
+using Prometheus;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -138,6 +142,12 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddAuthorization();
 builder.Services.AddHttpClient();
 
+builder.Services.AddSingleton(new ApplicationHealthMetadata(DateTimeOffset.UtcNow));
+
+builder.Services.AddHealthChecks()
+    .AddCheck("self", () => HealthCheckResult.Healthy(), tags: new[] { "live" })
+    .AddDbContextCheck<ApplicationDbContext>("database", tags: new[] { "ready" });
+
 var app = builder.Build();
 
 await app.Services.SeedCitiesAsync<ApplicationDbContext>();
@@ -164,6 +174,27 @@ else
 {
     app.UseHttpsRedirection();
 }
+
+app.UseHttpMetrics();
+
+app.MapHealthChecks("/healthz/live", new HealthCheckOptions
+{
+    Predicate = r => r.Tags.Contains("live"),
+    ResponseWriter = HealthCheckResponseWriter.WriteDetailedResponse
+});
+
+app.MapHealthChecks("/healthz/ready", new HealthCheckOptions
+{
+    Predicate = r => r.Tags.Contains("ready"),
+    ResponseWriter = HealthCheckResponseWriter.WriteDetailedResponse
+});
+
+app.MapHealthChecks("/healthz", new HealthCheckOptions
+{
+    ResponseWriter = HealthCheckResponseWriter.WriteDetailedResponse
+});
+
+app.MapMetrics("/metrics");
 
 app.UseAuthentication();
 app.UseAuthorization();
