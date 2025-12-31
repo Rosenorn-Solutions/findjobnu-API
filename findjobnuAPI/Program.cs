@@ -29,6 +29,8 @@ namespace FindjobnuService
                 .AddJsonFile("appsettings.Development.json", optional: true, reloadOnChange: true)
                 .AddEnvironmentVariables();
 
+            Metrics.SuppressDefaultMetrics();
+
             var loggerConfig = new LoggerConfiguration()
                 .ReadFrom.Configuration(builder.Configuration)
                 .Enrich.FromLogContext()
