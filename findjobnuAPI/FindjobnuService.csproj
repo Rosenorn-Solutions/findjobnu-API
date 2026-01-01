@@ -28,7 +28,7 @@
     <PackageReference Include="Serilog.Sinks.MSSqlServer" Version="9.0.2" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="10.1.0" />
     <PackageReference Include="Microsoft.Build" Version="18.0.2" />
-    <PackageReference Include="prometheus-net.AspNetCore" Version="8.1.0" />
+    <PackageReference Include="prometheus-net.AspNetCore" Version="8.2.1" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\SharedInfrastructure\SharedInfrastructure.csproj" />
