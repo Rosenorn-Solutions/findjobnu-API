@@ -4,10 +4,10 @@ using FindjobnuService.Models;
 using FindjobnuService.Repositories.Context;
 using FindjobnuService.Services;
 using JobAgentWorkerService.Repositories;
-using JobAgentWorkerService.Services;
 using JobAgentWorkerService.Templates;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
+using SharedInfrastructure.Email;
 using System.Collections.Generic;
 using System.Linq;
 

@@ -6,6 +6,7 @@ using JobAgentWorkerService.Services;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
+using SharedInfrastructure.Email;
 
 var builder = Host.CreateApplicationBuilder(args);
 

@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using SharedInfrastructure.Health;
 using Prometheus;
+using SharedInfrastructure.Email;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -50,6 +51,8 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 
 // Register application services
 builder.Services.AddScoped<IAuthService, AuthService.Services.AuthService>();
+builder.Services.AddScoped<ILinkedInAuthService, LinkedInAuthService>();
+builder.Services.AddSingleton<IEmailSender, SmtpEmailSender>();
 
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
 var secretKey = jwtSettings["SecretKey"];

@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Moq;
+using SharedInfrastructure.Email;
 
 namespace FindjobnuTesting
 {
@@ -36,6 +37,7 @@ namespace FindjobnuTesting
                 null, null, null, null);
 
             var loggerMock = new Mock<Microsoft.Extensions.Logging.ILogger<AuthService.Services.AuthService>>();
+            var emailSenderMock = new Mock<IEmailSender>();
 
             configurationMock = new Mock<IConfiguration>();
             configurationMock.Setup(x => x.GetSection("JwtSettings")["SecretKey"])
@@ -51,7 +53,8 @@ namespace FindjobnuTesting
                 signInManagerMock.Object,
                 configurationMock.Object,
                 dbContext,
-                loggerMock.Object);
+                loggerMock.Object,
+                emailSenderMock.Object);
         }
 
         [Fact]

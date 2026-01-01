@@ -125,7 +125,7 @@ namespace FindjobnuService
                 );
             });
 
-            builder.Services.AddScoped<ICvReadabilityService, CvReadabilityService>();
+            builder.Services.AddScoped<ICvService, CvService>();
             builder.Services.AddScoped<IJobAgentService, JobAgentService>();
 
             builder.Services.AddSingleton(new ApplicationHealthMetadata(DateTimeOffset.UtcNow));
@@ -230,7 +230,7 @@ namespace FindjobnuService
             app.MapJobIndexPostsEndpoints();
             app.MapCitiesEndpoints();
             app.MapProfileEndpoints();
-            app.MapCvReadabilityEndpoints();
+            app.MapCvEndpoints();
             app.MapJobAgentEndpoints();
 
             app.MapMetrics("/metrics");

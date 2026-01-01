@@ -4,6 +4,7 @@ using AuthService.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using SharedInfrastructure.Email;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
@@ -18,14 +19,16 @@ namespace AuthService.Services
         private readonly IConfiguration _configuration;
         private readonly ApplicationDbContext _dbContext;
         private readonly ILogger<AuthService> _logger;
+        private readonly IEmailSender _emailSender;
 
-        public AuthService(UserManager<ApplicationUser> userManager, SignInManager<ApplicationUser> signInManager, IConfiguration configuration, ApplicationDbContext dbContext, ILogger<AuthService> logger)
+        public AuthService(UserManager<ApplicationUser> userManager, SignInManager<ApplicationUser> signInManager, IConfiguration configuration, ApplicationDbContext dbContext, ILogger<AuthService> logger, IEmailSender emailSender)
         {
             _userManager = userManager;
             _signInManager = signInManager;
             _configuration = configuration;
             _dbContext = dbContext;
             _logger = logger;
+            _emailSender = emailSender;
         }
 
         public async Task<RegisterResult> RegisterAsync(RegisterRequest request, bool isLinkedInUser = false)
@@ -52,7 +55,7 @@ namespace AuthService.Services
                     {
                         var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
                         var confirmationLink = $"https://auth.findjob.nu/api/auth/confirm-email?userId={Uri.EscapeDataString(user.Id)}&token={Uri.EscapeDataString(token)}";
-                        await SendEmailAsync(user.Email!, "Confirm your email", $"Please confirm your account by clicking this link: <a href=\"{confirmationLink}\">Confirm Email</a>");
+                        await _emailSender.SendAsync(user.Email!, "Confirm your email", $"Please confirm your account by clicking this link: <a href=\"{confirmationLink}\">Confirm Email</a>");
                     }
                     catch (Exception ex)
                     {
@@ -251,26 +254,6 @@ namespace AuthService.Services
             if (tokens.Count > 0) await _dbContext.SaveChangesAsync();
         }
 
-        private async Task SendEmailAsync(string toEmail, string subject, string htmlMessage)
-        {
-            var smtpSection = _configuration.GetSection("Smtp");
-            var host = smtpSection["Host"];
-            var port = int.Parse(smtpSection["Port"] ?? "25");
-            var username = smtpSection["Username"];
-            var password = smtpSection["Password"];
-            var from = smtpSection["From"] ?? "noreply@findjob.nu";
-
-            using var client = new System.Net.Mail.SmtpClient(host!, port)
-            {
-                Credentials = new System.Net.NetworkCredential(username, password),
-                EnableSsl = true,
-                Timeout = 10000
-            };
-
-            var mailMessage = new System.Net.Mail.MailMessage(from!, toEmail, subject, htmlMessage) { IsBodyHtml = true };
-            await client.SendMailAsync(mailMessage);
-        }
-
         public async Task<Tuple<bool, string?>> IsLinkedInUserOrHasVerifiedTheirLinkedIn(string userId)
         {
             var user = await _userManager.FindByIdAsync(userId);
@@ -343,7 +326,7 @@ namespace AuthService.Services
             try
             {
                 var link = $"https://auth.findjob.nu/api/auth/confirm-change-email?userId={Uri.EscapeDataString(user.Id)}&newEmail={Uri.EscapeDataString(newEmail)}&token={Uri.EscapeDataString(token)}";
-                await SendEmailAsync(newEmail, "Confirm your email change", $"Confirm email change: <a href=\"{link}\">Click here</a>");
+                await _emailSender.SendAsync(newEmail, "Confirm your email change", $"Confirm email change: <a href=\"{link}\">Click here</a>");
             }
             catch (Exception ex)
             {

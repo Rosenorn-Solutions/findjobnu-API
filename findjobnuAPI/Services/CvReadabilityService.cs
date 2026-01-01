@@ -1,27 +1,91 @@
 using FindjobnuService.DTOs;
+using FindjobnuService.Models;
+using FindjobnuService.Repositories.Context;
 using iText.Kernel.Pdf;
 using iText.Kernel.Pdf.Canvas.Parser;
 using iText.Kernel.Pdf.Canvas.Parser.Listener;
+using Microsoft.EntityFrameworkCore;
 using System.IO.Compression;
 using System.Text;
 using System.Text.RegularExpressions;
 
 namespace FindjobnuService.Services;
 
-public class CvReadabilityService : ICvReadabilityService
+public class CvService : ICvService
 {
     private const long MaxFileSizeBytes = 10 * 1024 * 1024; // 10 MB
     private const int MaxExtractedCharacters = 2_500_000;
     private const int MaxResultCharacters = 2_000_000;
     private const int MaxArraySegmentCharacters = 200_000;
-    private readonly ILogger<CvReadabilityService> _logger;
 
-    public CvReadabilityService(ILogger<CvReadabilityService> logger)
+    private readonly FindjobnuContext _db;
+    private readonly IProfileService _profileService;
+    private readonly ILogger<CvService> _logger;
+
+    public CvService(FindjobnuContext db, IProfileService profileService, ILogger<CvService> logger)
     {
+        _db = db;
+        _profileService = profileService;
         _logger = logger;
     }
 
     public async Task<CvReadabilityResult> AnalyzeAsync(IFormFile pdfFile, CancellationToken cancellationToken = default)
+    {
+        ValidateFile(pdfFile);
+        var text = await ExtractTextAsync(pdfFile, cancellationToken);
+        var summary = BuildSummary(text);
+        var score = ComputeReadabilityScore(text);
+        return new CvReadabilityResult(text, score, summary);
+    }
+
+    public async Task<CvImportResult> ImportToProfileAsync(string userId, IFormFile pdfFile, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            throw new ArgumentException("User id is required.", nameof(userId));
+        }
+
+        ValidateFile(pdfFile);
+        var text = await ExtractTextAsync(pdfFile, cancellationToken);
+        var summary = BuildSummary(text);
+        var extracted = ExtractProfileData(text);
+
+        var profile = await _db.Profiles
+            .Include(p => p.BasicInfo)
+            .Include(p => p.Experiences)
+            .Include(p => p.Educations)
+            .Include(p => p.Skills)
+            .FirstOrDefaultAsync(p => p.UserId == userId, cancellationToken);
+
+        var created = profile == null;
+        if (profile == null)
+        {
+            profile = new Profile
+            {
+                UserId = userId,
+                BasicInfo = new BasicInfo()
+            };
+            _db.Profiles.Add(profile);
+        }
+        else
+        {
+            profile.LastUpdatedAt = DateTime.UtcNow;
+            profile.BasicInfo ??= new BasicInfo();
+        }
+
+        ApplyExtraction(profile, extracted, created);
+        await _db.SaveChangesAsync(cancellationToken);
+
+        var dto = await _profileService.GetByUserIdAsync(userId);
+        if (dto == null)
+        {
+            throw new InvalidOperationException("Profile could not be loaded after import.");
+        }
+
+        return new CvImportResult(dto, summary, text, created, extracted.Warnings);
+    }
+
+    private static void ValidateFile(IFormFile pdfFile)
     {
         if (pdfFile == null || pdfFile.Length == 0)
         {
@@ -38,20 +102,21 @@ public class CvReadabilityService : ICvReadabilityService
             throw new ArgumentException($"File too large. Max allowed size is {MaxFileSizeBytes / (1024 * 1024)} MB.");
         }
 
-        // Content-Type can be spoofed; we still check magic header below
         if (!string.Equals(pdfFile.ContentType, "application/pdf", StringComparison.OrdinalIgnoreCase) &&
             !string.Equals(pdfFile.ContentType, "application/octet-stream", StringComparison.OrdinalIgnoreCase))
         {
             throw new ArgumentException("Invalid Content-Type. Expecting application/pdf.");
         }
+    }
 
+    private async Task<string> ExtractTextAsync(IFormFile pdfFile, CancellationToken cancellationToken)
+    {
         string text;
         using (var ms = new MemoryStream((int)pdfFile.Length))
         {
             await pdfFile.CopyToAsync(ms, cancellationToken);
             ms.Position = 0;
 
-            // Basic PDF signature checks: header and EOF marker; simple encryption hint
             if (!LooksLikePdf(ms))
             {
                 throw new ArgumentException("The uploaded file does not appear to be a valid PDF.");
@@ -61,27 +126,326 @@ public class CvReadabilityService : ICvReadabilityService
             text = ExtractTextWithIText(ms);
             if (string.IsNullOrWhiteSpace(text))
             {
-                // Fallback to internal extractor (handles some edge encodings)
                 ms.Position = 0;
                 text = ExtractTextFromPdf(ms);
             }
         }
 
-        var summary = BuildSummary(text);
-        var score = ComputeReadabilityScore(text);
+        return text;
+    }
 
-        return new CvReadabilityResult(text, score, summary);
+    private void ApplyExtraction(Profile profile, CvExtractionResult data, bool created)
+    {
+        if (!string.IsNullOrWhiteSpace(data.FirstName))
+            profile.BasicInfo.FirstName = data.FirstName;
+        if (!string.IsNullOrWhiteSpace(data.LastName))
+            profile.BasicInfo.LastName = data.LastName;
+        if (!string.IsNullOrWhiteSpace(data.PhoneNumber))
+            profile.BasicInfo.PhoneNumber = data.PhoneNumber;
+        if (!string.IsNullOrWhiteSpace(data.About))
+            profile.BasicInfo.About = data.About;
+        if (!string.IsNullOrWhiteSpace(data.Location))
+            profile.BasicInfo.Location = data.Location;
+        if (!string.IsNullOrWhiteSpace(data.Company))
+            profile.BasicInfo.Company = data.Company;
+        if (!string.IsNullOrWhiteSpace(data.JobTitle))
+            profile.BasicInfo.JobTitle = data.JobTitle;
+
+        if (data.Keywords.Count > 0)
+        {
+            var merged = profile.Keywords ?? new List<string>();
+            foreach (var kw in data.Keywords)
+            {
+                if (!merged.Contains(kw, StringComparer.OrdinalIgnoreCase))
+                {
+                    merged.Add(kw);
+                }
+            }
+            profile.Keywords = merged;
+        }
+
+        if (data.Experiences.Count > 0)
+        {
+            if (!created)
+            {
+                _db.Experiences.RemoveRange(profile.Experiences ?? []);
+            }
+            profile.Experiences = new List<Experience>();
+            foreach (var exp in data.Experiences)
+            {
+                exp.Profile = profile;
+                profile.Experiences.Add(exp);
+            }
+        }
+
+        if (data.Educations.Count > 0)
+        {
+            if (!created)
+            {
+                _db.Educations.RemoveRange(profile.Educations ?? []);
+            }
+            profile.Educations = new List<Education>();
+            foreach (var edu in data.Educations)
+            {
+                edu.Profile = profile;
+                profile.Educations.Add(edu);
+            }
+        }
+
+        if (data.Skills.Count > 0)
+        {
+            if (!created)
+            {
+                _db.Skills.RemoveRange(profile.Skills ?? []);
+            }
+            profile.Skills = new List<Skill>();
+            foreach (var skill in data.Skills)
+            {
+                skill.Profile = profile;
+                profile.Skills.Add(skill);
+            }
+        }
+    }
+
+    private static CvExtractionResult ExtractProfileData(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return new CvExtractionResult(new List<string> { "Ingen tekst kunne udtrækkes fra PDF." });
+        }
+
+        var warnings = new List<string>();
+        var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        var (firstName, lastName) = ParseName(lines);
+        var phone = ParsePhone(text);
+        var about = ExtractSectionText(lines, new[] { "summary", "profile", "about", "om", "bio" });
+        var location = ParseLocation(lines);
+        var skillsSection = ExtractSectionText(lines, new[] { "skills", "kompetencer" });
+        var skills = ParseSkills(skillsSection);
+        var experiencesSection = ExtractSectionText(lines, new[] { "experience", "erfaring", "work experience" });
+        var experiences = ParseExperiences(experiencesSection);
+        var educationsSection = ExtractSectionText(lines, new[] { "education", "uddannelse" });
+        var educations = ParseEducations(educationsSection);
+
+        if (string.IsNullOrWhiteSpace(firstName) || string.IsNullOrWhiteSpace(lastName))
+        {
+            warnings.Add("Navn blev ikke fundet i CV'et.");
+        }
+        if (skills.Count == 0)
+        {
+            warnings.Add("Færdigheder blev ikke identificeret.");
+        }
+        if (experiences.Count == 0)
+        {
+            warnings.Add("Erfaring blev ikke identificeret.");
+        }
+
+        return new CvExtractionResult
+        {
+            FirstName = firstName,
+            LastName = lastName,
+            PhoneNumber = phone,
+            About = about,
+            Location = location,
+            Experiences = experiences,
+            Educations = educations,
+            Skills = skills,
+            Keywords = skills.Select(s => s.Name).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+            Warnings = warnings
+        };
+    }
+
+    private static (string First, string Last) ParseName(IEnumerable<string> lines)
+    {
+        foreach (var line in lines)
+        {
+            var trimmed = line.Trim();
+            if (Regex.IsMatch(trimmed, @"^[\p{L}']['\p{L}\s.-]+$"))
+            {
+                var parts = trimmed.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length >= 2)
+                {
+                    return (parts[0], string.Join(' ', parts.Skip(1)));
+                }
+            }
+        }
+        return (string.Empty, string.Empty);
+    }
+
+    private static string ParsePhone(string text)
+    {
+        var match = Regex.Match(text, @"(\n|\s)(\+?\d[\d\s().-]{6,}\d)");
+        return match.Success ? match.Groups[2].Value.Trim() : string.Empty;
+    }
+
+    private static string ParseLocation(IEnumerable<string> lines)
+    {
+        foreach (var line in lines)
+        {
+            if (line.StartsWith("Location", StringComparison.OrdinalIgnoreCase) ||
+                line.StartsWith("By", StringComparison.OrdinalIgnoreCase) ||
+                line.StartsWith("Sted", StringComparison.OrdinalIgnoreCase))
+            {
+                var parts = line.Split(':', 2);
+                if (parts.Length == 2)
+                {
+                    return parts[1].Trim();
+                }
+            }
+        }
+        return string.Empty;
+    }
+
+    private static string ExtractSectionText(string[] lines, string[] sectionHeaders)
+    {
+        var content = new List<string>();
+        bool inSection = false;
+        foreach (var line in lines)
+        {
+            var lower = line.Trim().ToLowerInvariant();
+            if (sectionHeaders.Any(h => lower.StartsWith(h)))
+            {
+                inSection = true;
+                var parts = line.Split(':', 2, StringSplitOptions.TrimEntries);
+                if (parts.Length == 2 && !string.IsNullOrWhiteSpace(parts[1]))
+                {
+                    content.Add(parts[1]);
+                }
+                continue;
+            }
+
+            var isStopHeader = DefaultSectionKeywords.Any(h => lower.StartsWith(h)) && !sectionHeaders.Any(h => lower.StartsWith(h));
+            if (inSection && isStopHeader)
+            {
+                break;
+            }
+
+            if (inSection)
+            {
+                content.Add(line);
+            }
+        }
+        return string.Join('\n', content);
+    }
+
+    private static List<Skill> ParseSkills(string sectionText)
+    {
+        var skills = new List<Skill>();
+        if (string.IsNullOrWhiteSpace(sectionText)) return skills;
+
+        var tokens = sectionText
+            .Split(['\n', ',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(t => t.Length <= 80);
+
+        foreach (var token in tokens)
+        {
+            skills.Add(new Skill
+            {
+                Name = token,
+                Proficiency = SkillProficiency.Intermediate
+            });
+        }
+
+        return skills;
+    }
+
+    private static List<Experience> ParseExperiences(string sectionText)
+    {
+        var experiences = new List<Experience>();
+        if (string.IsNullOrWhiteSpace(sectionText)) return experiences;
+
+        var chunks = SplitByBlankLines(sectionText);
+        foreach (var chunk in chunks)
+        {
+            var lines = chunk.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (lines.Length == 0) continue;
+            var first = lines[0];
+            var (company, role) = ParseCompanyAndRole(first);
+            var description = string.Join('\n', lines.Skip(1));
+            experiences.Add(new Experience
+            {
+                Company = company,
+                PositionTitle = role,
+                Description = description
+            });
+        }
+
+        return experiences;
+    }
+
+    private static List<Education> ParseEducations(string sectionText)
+    {
+        var educations = new List<Education>();
+        if (string.IsNullOrWhiteSpace(sectionText)) return educations;
+
+        var chunks = SplitByBlankLines(sectionText);
+        foreach (var chunk in chunks)
+        {
+            var lines = chunk.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (lines.Length == 0) continue;
+            var first = lines[0];
+            var parts = first.Split('-', StringSplitOptions.TrimEntries);
+            var institution = parts.FirstOrDefault() ?? string.Empty;
+            var degree = parts.Skip(1).FirstOrDefault() ?? string.Empty;
+            var description = string.Join('\n', lines.Skip(1));
+            educations.Add(new Education
+            {
+                Institution = institution,
+                Degree = degree,
+                Description = description
+            });
+        }
+
+        return educations;
+    }
+
+    private static List<string> SplitByBlankLines(string sectionText)
+    {
+        var results = new List<string>();
+        var sb = new StringBuilder();
+        using var reader = new StringReader(sectionText);
+        string? line;
+        while ((line = reader.ReadLine()) != null)
+        {
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                if (sb.Length > 0)
+                {
+                    results.Add(sb.ToString().Trim());
+                    sb.Clear();
+                }
+            }
+            else
+            {
+                sb.AppendLine(line.Trim());
+            }
+        }
+        if (sb.Length > 0)
+        {
+            results.Add(sb.ToString().Trim());
+        }
+        return results;
+    }
+
+    private static (string Company, string Role) ParseCompanyAndRole(string line)
+    {
+        if (string.IsNullOrWhiteSpace(line)) return (string.Empty, string.Empty);
+        if (line.Contains('-'))
+        {
+            var parts = line.Split('-', 2, StringSplitOptions.TrimEntries);
+            return (parts[0], parts.Length > 1 ? parts[1] : string.Empty);
+        }
+        return (line, string.Empty);
     }
 
     private static bool LooksLikePdf(Stream stream)
     {
-        // Read first bytes for %PDF- and search for %%EOF near the end. Also block encrypted PDFs heuristically ("/Encrypt").
         long originalPos = stream.CanSeek ? stream.Position : 0;
         try
         {
             if (!stream.CanSeek) return false;
 
-            // Header check
             stream.Position = 0;
             Span<byte> header = stackalloc byte[5];
             if (!TryFillBuffer(stream, header))
@@ -89,7 +453,6 @@ public class CvReadabilityService : ICvReadabilityService
             if (header[0] != (byte)'%' || header[1] != (byte)'P' || header[2] != (byte)'D' || header[3] != (byte)'F' || header[4] != (byte)'-')
                 return false;
 
-            // EOF check (look in last 1KB)
             var tailSize = (int)Math.Min(1024, stream.Length);
             stream.Position = stream.Length - tailSize;
             var tailBuf = new byte[tailSize];
@@ -99,7 +462,6 @@ public class CvReadabilityService : ICvReadabilityService
             if (!tailStr.Contains("%%EOF", StringComparison.Ordinal))
                 return false;
 
-            // Encryption hint
             stream.Position = 0;
             var headSize = (int)Math.Min(4096, stream.Length);
             var headBuf = new byte[headSize];
@@ -133,11 +495,10 @@ public class CvReadabilityService : ICvReadabilityService
                 {
                     sb.AppendLine(text);
                 }
-                if (sb.Length > MaxExtractedCharacters) break; // safety cap
+                if (sb.Length > MaxExtractedCharacters) break;
             }
 
             var result = sb.ToString();
-            // normalize
             result = Regex.Replace(result, "-\r?\n", string.Empty);
             result = Regex.Replace(result, "\r?\n", "\n");
             result = Regex.Replace(result, "[\t\u00A0]", " ");
@@ -151,7 +512,6 @@ public class CvReadabilityService : ICvReadabilityService
         }
     }
 
-    // Improved extractor: parse streams, attempt to decompress Flate (zlib) content, then scan for text-show operators.
     private static string ExtractTextFromPdf(Stream pdfStream)
     {
         try
@@ -165,7 +525,14 @@ public class CvReadabilityService : ICvReadabilityService
                     combinedContent = ReadRawPdfContent(memoryStream);
                 }
 
-                return ExtractTextFromContentStreams(combinedContent);
+                var text = ExtractTextFromContentStreams(combinedContent);
+                if (string.IsNullOrWhiteSpace(text))
+                {
+                    memoryStream.Position = 0;
+                    text = NormalizeWhitespace(ReadRawPdfContent(memoryStream));
+                }
+
+                return text;
             }
             finally
             {
@@ -341,13 +708,11 @@ public class CvReadabilityService : ICvReadabilityService
             int streamPos = text.IndexOf("stream", index, StringComparison.Ordinal);
             if (streamPos == -1) yield break;
 
-            // Find preceding dictionary to detect filter
             int dictEnd = streamPos;
             int dictStart = text.LastIndexOf("<<", dictEnd, dictEnd);
             string dict = dictStart >= 0 ? text.Substring(dictStart, dictEnd - dictStart) : string.Empty;
             bool isFlate = dict.Contains("/FlateDecode", StringComparison.Ordinal) || dict.Contains("/Fl", StringComparison.Ordinal);
 
-            // Move to data start (after newline)
             int dataStart = streamPos + "stream".Length;
             if (dataStart < text.Length && (text[dataStart] == '\r' || text[dataStart] == '\n'))
             {
@@ -357,12 +722,11 @@ public class CvReadabilityService : ICvReadabilityService
             int endStreamPos = text.IndexOf("endstream", dataStart, StringComparison.Ordinal);
             if (endStreamPos == -1) yield break;
 
-            // Map char indices to byte offsets assuming ASCII (PDF keywords are ASCII; stream bytes are binary but we slice using same offsets)
             int byteStart = ascii.GetByteCount(text.Substring(0, dataStart));
             int byteEnd = ascii.GetByteCount(text.Substring(0, endStreamPos));
             if (byteEnd > data.Length || byteStart > data.Length || byteEnd <= byteStart)
             {
-                index = endStreamPos + 9; // skip past endstream
+                index = endStreamPos + 9;
                 continue;
             }
 
@@ -377,7 +741,6 @@ public class CvReadabilityService : ICvReadabilityService
 
     private static string? TryDecodeStream(byte[] raw, bool isFlate)
     {
-        // Most content streams are zlib (Flate). Try zlib first, then raw deflate, then ASCII fallback.
         if (isFlate)
         {
             try
@@ -398,12 +761,10 @@ public class CvReadabilityService : ICvReadabilityService
                 }
                 catch
                 {
-                    // fall through
                 }
             }
         }
 
-        // Non-compressed or failed decompression: try ASCII
         try
         {
             return Encoding.Latin1.GetString(raw);
@@ -414,16 +775,8 @@ public class CvReadabilityService : ICvReadabilityService
         }
     }
 
-    private static int TotalLength(List<string> list)
-    {
-        int len = 0;
-        foreach (var s in list) len += s?.Length ?? 0;
-        return len;
-    }
-
     private static string UnescapePdfString(string s)
     {
-        // Escape sequences can span multiple characters, so we manually move the index.
         var sb = new StringBuilder();
         int index = 0;
         while (index < s.Length)
@@ -455,7 +808,7 @@ public class CvReadabilityService : ICvReadabilityService
         switch (nextChar)
         {
             case '\\':
-            case '(':
+            case '(': 
             case ')':
                 target.Append(nextChar);
                 consumed = 2;
@@ -537,11 +890,11 @@ public class CvReadabilityService : ICvReadabilityService
     private static string NormalizeWhitespace(string input)
     {
         if (string.IsNullOrWhiteSpace(input)) return string.Empty;
-        input = Regex.Replace(input, "-\r?\n", string.Empty); // remove hyphenated line breaks that split words
-        var normalized = Regex.Replace(input, "\r?\n", "\n"); // normalize newlines
-        normalized = Regex.Replace(normalized, "[\t\u00A0]", " "); // tabs & non-breaking space
-        normalized = Regex.Replace(normalized, "[ ]{2,}", " "); // collapse spaces
-        normalized = Regex.Replace(normalized, "\n{3,}", "\n\n"); // collapse blank lines
+        input = Regex.Replace(input, "-\r?\n", string.Empty);
+        var normalized = Regex.Replace(input, "\r?\n", "\n");
+        normalized = Regex.Replace(normalized, "[\t\u00A0]", " ");
+        normalized = Regex.Replace(normalized, "[ ]{2,}", " ");
+        normalized = Regex.Replace(normalized, "\n{3,}", "\n\n");
         return normalized.Trim();
     }
 
@@ -572,7 +925,6 @@ public class CvReadabilityService : ICvReadabilityService
         var totalWords = Regex.Matches(text, @"\b[\r\n\p{L}\p{Nd}\-_.]+\b").Count;
         var totalLines = text.Split('\n').Length;
 
-        // Heuristics: sections, bullet points, contact info
         var hasEmail = Regex.IsMatch(text, @"[A-Z0-9._%+-]+\s*@\s*[A-Z0-9.-]+\s*\.\s*[A-Z]{2,}", RegexOptions.IgnoreCase);
         var hasPhone = Regex.IsMatch(text, @"(\n|\s)(\+?\d[\d\s().-]{6,}\d)");
         var bulletCount = Regex.Matches(text, @"(^|\n)[\u2022\-*] \s?").Count;
@@ -591,37 +943,55 @@ public class CvReadabilityService : ICvReadabilityService
         );
     }
 
-    // Simple heuristic readability score (0-100). Higher is more machine-readable.
     private static double ComputeReadabilityScore(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return 0.0;
 
-        double score = 50.0; // base
+        double score = 50.0;
 
-        // Penalize if too short
         var words = Regex.Matches(text, @"\b[\r\n\p{L}\p{Nd}\-_.]+\b").Count;
         if (words < 100) score -= 10;
-        else if (words > 1500) score -= 10; // too long
+        else if (words > 1500) score -= 10;
         else score += 5;
 
-        // Reward presence of contact info (allow minor spacing around @ and .)
         if (Regex.IsMatch(text, @"[A-Z0-9._%+-]+\s*@\s*[A-Z0-9.-]+\s*\.\s*[A-Z]{2,}", RegexOptions.IgnoreCase)) score += 10;
         if (Regex.IsMatch(text, @"(\n|\s)(\+?\d[\d\s().-]{6,}\d)")) score += 5;
 
-        // Reward bullets
         var bulletCount = Regex.Matches(text, @"(^|\n)[\u2022\-*] \s?").Count;
         score += Math.Min(10, bulletCount);
 
-        // Reward recognized sections
         var sectionKeywords = new[] { "experience", "education", "skills", "projects", "summary", "profile", "erfaring", "uddannelse", "færdigheder", "projekter", "om", "om mig", "bio", "profil", "resumé", "resume" };
         var sections = sectionKeywords.Count(k => Regex.IsMatch(text, $@"(^|\n)\s*{Regex.Escape(k)}\b", RegexOptions.IgnoreCase));
         score += sections * 5;
 
-        // Penalize if many non-letter symbols (suggests parsing noise)
         var nonLetterRatio = text.Count(c => !char.IsLetterOrDigit(c) && !char.IsWhiteSpace(c) && c != '-' && c != '.') / (double)text.Length;
         if (nonLetterRatio > 0.2) score -= 10;
 
-        // Clamp 0-100
         return Math.Max(0, Math.Min(100, score));
+    }
+
+    private sealed class CvExtractionResult
+    {
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public string PhoneNumber { get; set; } = string.Empty;
+        public string About { get; set; } = string.Empty;
+        public string Location { get; set; } = string.Empty;
+        public string Company { get; set; } = string.Empty;
+        public string JobTitle { get; set; } = string.Empty;
+        public List<Experience> Experiences { get; set; } = new();
+        public List<Education> Educations { get; set; } = new();
+        public List<Skill> Skills { get; set; } = new();
+        public List<string> Keywords { get; set; } = new();
+        public List<string> Warnings { get; set; } = new();
+
+        public CvExtractionResult()
+        {
+        }
+
+        public CvExtractionResult(List<string> warnings)
+        {
+            Warnings = warnings;
+        }
     }
 }

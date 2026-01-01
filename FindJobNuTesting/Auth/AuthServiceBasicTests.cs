@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using SharedInfrastructure.Email;
 
 namespace FindjobnuTesting.Auth
 {
@@ -37,6 +38,7 @@ namespace FindjobnuTesting.Auth
                 .AddSignInManager() // register SignInManager
                 .AddEntityFrameworkStores<ApplicationDbContext>()
                 .AddDefaultTokenProviders();
+            services.AddSingleton<IEmailSender, NoopEmailSender>();
 
             var sp = services.BuildServiceProvider();
             var scope = sp.CreateScope();
@@ -44,7 +46,8 @@ namespace FindjobnuTesting.Auth
             var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
             var signInManager = scope.ServiceProvider.GetRequiredService<SignInManager<ApplicationUser>>();
             var logger = scope.ServiceProvider.GetRequiredService<ILogger<AuthService.Services.AuthService>>();
-            var svc = new AuthService.Services.AuthService(userManager, signInManager, configuration, db, logger);
+            var emailSender = scope.ServiceProvider.GetRequiredService<IEmailSender>();
+            var svc = new AuthService.Services.AuthService(userManager, signInManager, configuration, db, logger, emailSender);
             return (svc, db, userManager, signInManager);
         }
 
@@ -147,6 +150,11 @@ namespace FindjobnuTesting.Auth
             var refreshed = await userManager.FindByIdAsync(user.Id);
             Assert.True(refreshed!.LockoutEnabled);
             Assert.True(refreshed.LockoutEnd.HasValue);
+        }
+
+        private class NoopEmailSender : IEmailSender
+        {
+            public Task SendAsync(string toEmail, string subject, string htmlBody, CancellationToken ct = default) => Task.CompletedTask;
         }
     }
 }
