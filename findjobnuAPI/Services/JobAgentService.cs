@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-using System.Linq;
 using FindjobnuService.Models;
 using FindjobnuService.Repositories.Context;
 using Microsoft.EntityFrameworkCore;
@@ -123,6 +121,7 @@ namespace FindjobnuService.Services
             return values
                 .Where(v => !string.IsNullOrWhiteSpace(v))
                 .Select(v => v.Trim())
+                .Where(v => v.Length <= 200)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
         }

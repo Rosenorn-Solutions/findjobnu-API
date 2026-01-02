@@ -8,8 +8,6 @@ using JobAgentWorkerService.Templates;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using SharedInfrastructure.Email;
-using System.Collections.Generic;
-using System.Linq;
 
 namespace JobAgentWorkerService.Consumers
 {

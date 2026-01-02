@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using FindjobnuService.Models;
 
 namespace FindjobnuService.Services

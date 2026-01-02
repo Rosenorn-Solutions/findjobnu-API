@@ -1,5 +1,4 @@
-﻿using System.Collections.Generic;
-using FindjobnuService.Models;
+﻿using FindjobnuService.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
@@ -22,6 +21,7 @@ namespace FindjobnuService.Repositories.Context
         public DbSet<Skill> Skills { get; set; }
         public DbSet<JobKeyword> JobKeywords { get; set; }
         public DbSet<JobAgent> JobAgents { get; set; }
+        public DbSet<NewsletterSubscription> NewsletterSubscriptions { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -45,6 +45,13 @@ namespace FindjobnuService.Repositories.Context
             modelBuilder.Entity<Profile>()
                 .HasIndex(p => p.UserId)
                 .IsUnique();
+
+            modelBuilder.Entity<NewsletterSubscription>(entity =>
+            {
+                entity.ToTable("NewsletterSubscriptions");
+                entity.Property(n => n.Email).IsRequired().HasMaxLength(320);
+                entity.HasIndex(n => n.Email).IsUnique();
+            });
 
             var keywordsConverter = new ValueConverter<List<string>?, string?>(
                 v => v == null ? null : string.Join(",", v),

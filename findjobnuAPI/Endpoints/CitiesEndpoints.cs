@@ -1,9 +1,9 @@
 ﻿using FindjobnuService.DTOs.Responses;
 using FindjobnuService.Mappers;
-using SharedInfrastructure.Cities;
 using FindjobnuService.Repositories.Context;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
+using SharedInfrastructure.Cities;
 namespace FindjobnuService.Endpoints;
 
 public static class CitiesEndpoints

@@ -1,4 +1,3 @@
-using System.IO;
 using SkiaSharp;
 
 namespace FindjobnuService.Utilities

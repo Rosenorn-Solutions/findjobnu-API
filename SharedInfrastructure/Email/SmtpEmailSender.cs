@@ -1,7 +1,7 @@
-using System.Net;
-using System.Net.Mail;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using System.Net;
+using System.Net.Mail;
 
 namespace SharedInfrastructure.Email;
 

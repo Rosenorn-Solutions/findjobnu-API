@@ -3,18 +3,18 @@ using AuthService.Endpoints;
 using AuthService.Entities;
 using AuthService.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
-using Serilog;
-using System.Text;
-using SharedInfrastructure.Cities;
-using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using SharedInfrastructure.Health;
+using Microsoft.IdentityModel.Tokens;
 using Prometheus;
+using Serilog;
+using SharedInfrastructure.Cities;
 using SharedInfrastructure.Email;
+using SharedInfrastructure.Health;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 

@@ -2,7 +2,6 @@ using FindjobnuService.Models;
 using FindjobnuService.Repositories.Context;
 using FindjobnuService.Services;
 using Microsoft.EntityFrameworkCore;
-using Moq;
 
 namespace FindjobnuTesting
 {

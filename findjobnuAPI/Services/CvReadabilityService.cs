@@ -808,7 +808,7 @@ public class CvService : ICvService
         switch (nextChar)
         {
             case '\\':
-            case '(': 
+            case '(':
             case ')':
                 target.Append(nextChar);
                 consumed = 2;

@@ -1,7 +1,7 @@
-using System.Reflection;
-using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using System.Reflection;
+using System.Text;
 
 namespace SharedInfrastructure.Cities;
 

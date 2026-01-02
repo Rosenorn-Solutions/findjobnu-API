@@ -44,5 +44,19 @@ namespace FindjobnuTesting.Integration.JobIndexPosts
             var response = await _client.GetAsync("/api/jobindexposts/recommended-jobs?page=1");
             Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         }
+
+        [Fact]
+        public async Task GetAll_ReturnsBadRequest_ForInvalidPaging()
+        {
+            var response = await _client.GetAsync("/api/jobindexposts?page=0&pageSize=5000");
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        }
+
+        [Fact]
+        public async Task Search_ReturnsBadRequest_ForInvalidPaging()
+        {
+            var response = await _client.GetAsync("/api/jobindexposts/search?page=0&pageSize=5000");
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        }
     }
 }

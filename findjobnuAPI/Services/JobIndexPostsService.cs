@@ -2,9 +2,9 @@
 using FindjobnuService.DTOs.Responses;
 using FindjobnuService.Models;
 using FindjobnuService.Repositories.Context;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
-using Microsoft.Data.SqlClient;
 
 namespace FindjobnuService.Services
 {
@@ -233,6 +233,45 @@ WHERE (@postedAfter IS NULL OR j.Published >= @postedAfter)
                 _logger.LogError(ex, "Failed to get categories");
                 return new CategoriesResponse(false, ex.Message, []);
             }
+        }
+
+        public async Task<JobStatisticsResponse> GetStatisticsAsync()
+        {
+            var now = DateTime.UtcNow;
+            var weekAgo = now.AddDays(-7);
+            var monthAgo = now.AddMonths(-1);
+
+            var totalJobs = await _db.JobIndexPosts.CountAsync();
+            var newJobsLastWeek = await _db.JobIndexPosts.CountAsync(j => j.Published >= weekAgo);
+            var newJobsLastMonth = await _db.JobIndexPosts.CountAsync(j => j.Published >= monthAgo);
+
+            var topCategories = await _db.Categories
+                .Select(c => new CategoryJobCountResponse(
+                    c.CategoryID,
+                    c.Name,
+                    c.JobIndexPosts.Count))
+                .OrderByDescending(c => c.NumberOfJobs)
+                .ThenBy(c => c.Name)
+                .Take(10)
+                .ToListAsync();
+
+            var topCategoriesLastWeek = await _db.Categories
+                .Select(c => new CategoryJobCountResponse(
+                    c.CategoryID,
+                    c.Name,
+                    c.JobIndexPosts.Count(j => j.Published >= weekAgo)))
+                .Where(c => c.NumberOfJobs > 0)
+                .OrderByDescending(c => c.NumberOfJobs)
+                .ThenBy(c => c.Name)
+                .Take(5)
+                .ToListAsync();
+
+            return new JobStatisticsResponse(
+                topCategories,
+                topCategoriesLastWeek,
+                totalJobs,
+                newJobsLastWeek,
+                newJobsLastMonth);
         }
 
         public async Task<PagedList<JobIndexPosts>> GetSavedJobsByUserId(string userId, int page)

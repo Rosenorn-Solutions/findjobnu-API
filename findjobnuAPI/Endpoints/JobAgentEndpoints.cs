@@ -1,7 +1,7 @@
 using FindjobnuService.DTOs;
 using FindjobnuService.DTOs.Requests;
-using FindjobnuService.Models;
 using FindjobnuService.Mappers;
+using FindjobnuService.Models;
 using FindjobnuService.Services;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;

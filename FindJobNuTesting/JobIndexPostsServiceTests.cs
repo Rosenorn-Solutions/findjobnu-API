@@ -207,5 +207,42 @@ namespace FindjobnuTesting
             Assert.Single(result.Items);
             Assert.Equal(10, result.Items.First().JobID);
         }
+
+        [Fact]
+        public async Task GetStatisticsAsync_ComputesCountsAndTopCategories()
+        {
+            var options = new DbContextOptionsBuilder<FindjobnuContext>()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .Options;
+            using var context = new FindjobnuContext(options);
+            var tech = new Category { Name = "Tech" };
+            var health = new Category { Name = "Health" };
+            var design = new Category { Name = "Design" };
+            context.Categories.AddRange(tech, health, design);
+            var now = DateTime.UtcNow;
+            context.JobIndexPosts.AddRange(
+                new JobIndexPosts { JobID = 1, JobTitle = "A", Categories = [tech], Published = now.AddDays(-2) },
+                new JobIndexPosts { JobID = 2, JobTitle = "B", Categories = [tech], Published = now.AddDays(-10) },
+                new JobIndexPosts { JobID = 3, JobTitle = "C", Categories = [health], Published = now.AddDays(-3) },
+                new JobIndexPosts { JobID = 4, JobTitle = "D", Categories = [health], Published = now.AddDays(-40) },
+                new JobIndexPosts { JobID = 5, JobTitle = "E", Categories = [design], Published = now.AddDays(-1) },
+                new JobIndexPosts { JobID = 6, JobTitle = "F", Categories = [design], Published = now.AddDays(-20) },
+                new JobIndexPosts { JobID = 7, JobTitle = "G", Categories = [health], Published = now.AddDays(-2) }
+            );
+            await context.SaveChangesAsync();
+
+            var logger = new Mock<ILogger<JobIndexPostsService>>().Object;
+            var service = new JobIndexPostsService(context, logger);
+
+            var stats = await service.GetStatisticsAsync();
+
+            Assert.Equal(7, stats.TotalJobs);
+            Assert.Equal(4, stats.NewJobsLastWeek);
+            Assert.Equal(6, stats.NewJobsLastMonth);
+            Assert.Equal("Health", stats.TopCategories.First().Name);
+            Assert.Equal(3, stats.TopCategories.First().NumberOfJobs);
+            Assert.Equal("Health", stats.TopCategoriesLastWeek.First().Name);
+            Assert.Equal(2, stats.TopCategoriesLastWeek.First().NumberOfJobs);
+        }
     }
 }

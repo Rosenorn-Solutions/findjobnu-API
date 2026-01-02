@@ -1,21 +1,21 @@
-﻿using Microsoft.AspNetCore.HttpOverrides;
-using Microsoft.EntityFrameworkCore;
+﻿using FindjobnuService.Endpoints;
+using FindjobnuService.Repositories.Context;
+using FindjobnuService.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.IdentityModel.Tokens;
-using System.Text;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.ResponseCompression;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.IdentityModel.Protocols.Configuration;
+using Microsoft.IdentityModel.Tokens;
+using Prometheus;
 using Serilog;
 using Serilog.Events;
-using FindjobnuService.Services;
-using FindjobnuService.Repositories.Context;
-using FindjobnuService.Endpoints;
-using Microsoft.AspNetCore.ResponseCompression;
-using System.IO.Compression;
 using SharedInfrastructure.Cities;
-using Microsoft.AspNetCore.Diagnostics.HealthChecks;
-using Microsoft.Extensions.Diagnostics.HealthChecks;
 using SharedInfrastructure.Health;
-using Prometheus;
+using System.IO.Compression;
+using System.Text;
 
 namespace FindjobnuService
 {
@@ -108,6 +108,7 @@ namespace FindjobnuService
             builder.Services.AddHttpClient();
             builder.Services.AddScoped<IProfileService, ProfileService>();
             builder.Services.AddScoped<IJobIndexPostsService, JobIndexPostsService>();
+            builder.Services.AddScoped<INewsletterService, NewsletterService>();
             builder.Services.AddScoped<ILinkedInProfileService>(provider =>
             {
                 var config = provider.GetRequiredService<IConfiguration>();
@@ -199,7 +200,7 @@ namespace FindjobnuService
                 app.UseHttpsRedirection();
             }
 
-        app.UseHttpMetrics();
+            app.UseHttpMetrics();
 
             // Enable response compression middleware
             app.UseResponseCompression();
@@ -232,6 +233,7 @@ namespace FindjobnuService
             app.MapProfileEndpoints();
             app.MapCvEndpoints();
             app.MapJobAgentEndpoints();
+            app.MapNewsletterEndpoints();
 
             app.MapMetrics("/metrics");
 

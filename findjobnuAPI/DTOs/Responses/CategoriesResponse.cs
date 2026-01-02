@@ -1,6 +1,4 @@
-﻿using System.Collections.Generic;
-
-namespace FindjobnuService.DTOs.Responses
+﻿namespace FindjobnuService.DTOs.Responses
 {
     public readonly record struct CategoryJobCountResponse(int Id, string Name, int NumberOfJobs);
 

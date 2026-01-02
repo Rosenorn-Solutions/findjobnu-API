@@ -9,11 +9,11 @@ public record ProfileUpdateRequest(
     [property: Required, MaxLength(100)] string LastName,
     DateTime? DateOfBirth,
     [property: Phone, MaxLength(100)] string? PhoneNumber,
-    string? About,
-    string? Location,
-    string? Company,
-    string? JobTitle,
-    string? LinkedinUrl,
+    [property: MaxLength(2000)] string? About,
+    [property: MaxLength(200)] string? Location,
+    [property: MaxLength(200)] string? Company,
+    [property: MaxLength(200)] string? JobTitle,
+    [property: MaxLength(500), Url] string? LinkedinUrl,
     bool OpenToWork,
     // Collections
     List<ExperienceUpdate>? Experiences,
@@ -28,38 +28,38 @@ public record ProfileUpdateRequest(
 );
 
 public record ExperienceUpdate(
-    string? PositionTitle,
-    string? Company,
+    [property: MaxLength(200)] string? PositionTitle,
+    [property: MaxLength(200)] string? Company,
     string? FromDate,
     string? ToDate,
     string? Duration,
-    string? Location,
-    string? Description,
-    string? LinkedinUrl
+    [property: MaxLength(200)] string? Location,
+    [property: MaxLength(2000)] string? Description,
+    [property: MaxLength(500), Url] string? LinkedinUrl
 );
 
 public record EducationUpdate(
-    string? Institution,
-    string? Degree,
+    [property: MaxLength(200)] string? Institution,
+    [property: MaxLength(200)] string? Degree,
     string? FromDate,
     string? ToDate,
-    string? Description,
-    string? LinkedinUrl
+    [property: MaxLength(2000)] string? Description,
+    [property: MaxLength(500), Url] string? LinkedinUrl
 );
 
 public record InterestUpdate(
-    string? Title
+    [property: MaxLength(200)] string? Title
 );
 
 public record AccomplishmentUpdate(
-    string? Category,
-    string? Title
+    [property: MaxLength(100)] string? Category,
+    [property: MaxLength(200)] string? Title
 );
 
 public record ContactUpdate(
-    string? Name,
-    string? Occupation,
-    string? Url
+    [property: MaxLength(200)] string? Name,
+    [property: MaxLength(200)] string? Occupation,
+    [property: MaxLength(500), Url] string? Url
 );
 
 public enum SkillProficiencyUpdate
@@ -71,6 +71,6 @@ public enum SkillProficiencyUpdate
 }
 
 public record SkillUpdate(
-    [property: Required] string Name,
+    [property: Required, MaxLength(200)] string Name,
     [property: Required] SkillProficiencyUpdate Proficiency
 );

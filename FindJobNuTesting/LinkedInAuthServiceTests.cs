@@ -204,5 +204,88 @@ namespace FindjobnuTesting
             Assert.Contains("test%40example.com", redirect.Url);
             Assert.Contains("accessToken=access", redirect.Url);
         }
+
+        [Fact]
+        public async Task HandleCallbackAsync_ReturnsBadRequest_WhenNameMissing()
+        {
+            var service = GetServiceWithMocks(out _, out _, out var configMock, out var httpClientFactoryMock, out _);
+            var context = new DefaultHttpContext();
+            context.Request.QueryString = new QueryString("?code=abc");
+
+            var handler = new Mock<HttpMessageHandler>();
+            handler.Protected()
+                .SetupSequence<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+                .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("{\"access_token\":\"token\"}")
+                })
+                .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("{\"email\":\"test@example.com\",\"sub\":\"123\"}")
+                })
+                .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("{\"vanityName\":\"john-doe\",\"localizedHeadline\":\"Engineer\"}")
+                });
+            var client = new HttpClient(handler.Object);
+            httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(client);
+
+            var result = await service.HandleCallbackAsync(context);
+            var badRequest = Assert.IsType<BadRequest<string>>(result);
+            Assert.Contains("First name or last name not found", badRequest.Value.ToString());
+        }
+
+        [Fact]
+        public async Task HandleCallbackAsync_NewUser_SuccessfulFlow_Redirects()
+        {
+            var service = GetServiceWithMocks(out var userManagerMock, out var signInManagerMock, out var configMock, out var httpClientFactoryMock, out var authServiceMock);
+            var context = new DefaultHttpContext();
+            context.Request.QueryString = new QueryString("?code=abc");
+
+            var handler = new Mock<HttpMessageHandler>();
+            handler.Protected()
+                .SetupSequence<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+                .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("{\"access_token\":\"token\"}")
+                })
+                .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("{\"email\":\"new@example.com\",\"given_name\":\"Jane\",\"family_name\":\"Doe\",\"sub\":\"456\"}")
+                })
+                .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("{\"vanityName\":\"jane-doe\",\"localizedHeadline\":\"Engineer\"}")
+                });
+            var client = new HttpClient(handler.Object);
+            httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(client);
+
+            userManagerMock.Setup(x => x.FindByEmailAsync("new@example.com")).ReturnsAsync((ApplicationUser?)null);
+            userManagerMock.Setup(x => x.CreateAsync(It.IsAny<ApplicationUser>(), It.IsAny<string>()))
+                .ReturnsAsync(IdentityResult.Success);
+            signInManagerMock.Setup(x => x.CheckPasswordSignInAsync(It.IsAny<ApplicationUser>(), It.IsAny<string>(), false))
+                .ReturnsAsync(SignInResult.Success);
+            authServiceMock.Setup(x => x.LoginAsync(It.IsAny<LoginRequest>(), true)).ReturnsAsync(new LoginResult
+            {
+                Success = true,
+                AuthResponse = new AuthResponse
+                {
+                    UserId = "user-new",
+                    Email = "new@example.com",
+                    FirstName = "Jane",
+                    LastName = "Doe",
+                    AccessToken = "access-token",
+                    RefreshToken = "refresh-token",
+                    AccessTokenExpiration = DateTime.UtcNow.AddHours(1),
+                    LinkedInId = "456"
+                }
+            });
+
+            var result = await service.HandleCallbackAsync(context);
+            var redirect = Assert.IsType<RedirectHttpResult>(result);
+            Assert.Contains("new%40example.com", redirect.Url);
+            Assert.Contains("access-token", redirect.Url);
+            Assert.Contains("refresh-token", redirect.Url);
+        }
     }
 }

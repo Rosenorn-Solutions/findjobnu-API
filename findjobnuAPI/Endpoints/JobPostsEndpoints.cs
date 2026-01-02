@@ -15,11 +15,13 @@ public static class JobPostsEndpoints
     {
         var group = routes.MapGroup("/api/jobindexposts").WithTags(nameof(JobIndexPosts));
 
-        group.MapGet("/", async Task<Results<Ok<PagedResponse<JobIndexPostResponse>>, NoContent>> (
+        group.MapGet("/", async Task<Results<Ok<PagedResponse<JobIndexPostResponse>>, BadRequest<string>, NoContent>> (
             [FromServices] IJobIndexPostsService service,
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 10) =>
         {
+            if (page < 1 || pageSize < 1 || pageSize > 200)
+                return TypedResults.BadRequest("Invalid paging parameters.");
             try
             {
                 var pagedList = await service.GetAllAsync(page, pageSize);
@@ -39,10 +41,12 @@ public static class JobPostsEndpoints
         .WithName("GetAllJobPosts")
         .CacheOutput(p => p.Expire(TimeSpan.FromMinutes(2)));
 
-        group.MapGet("/search", async Task<Results<Ok<PagedResponse<JobIndexPostResponse>>, NoContent>> (
+        group.MapGet("/search", async Task<Results<Ok<PagedResponse<JobIndexPostResponse>>, BadRequest<string>, NoContent>> (
             [AsParameters] JobIndexPostsSearchRequest request,
             [FromServices] IJobIndexPostsService service) =>
         {
+            if (request.Page < 1 || request.PageSize < 1 || request.PageSize > 200)
+                return TypedResults.BadRequest("Invalid paging parameters.");
             try
             {
                 var pagedList = await service.SearchAsync(
@@ -64,8 +68,10 @@ public static class JobPostsEndpoints
         })
         .WithName("GetJobPostsBySearch");
 
-        group.MapGet("/{id}", async Task<Results<Ok<JobIndexPostResponse>, NoContent>> (int id, [FromServices] IJobIndexPostsService service) =>
+        group.MapGet("/{id}", async Task<Results<Ok<JobIndexPostResponse>, BadRequest<string>, NoContent>> (int id, [FromServices] IJobIndexPostsService service) =>
         {
+            if (id <= 0)
+                return TypedResults.BadRequest("Invalid id.");
             try
             {
                 var jobPost = await service.GetByIdAsync(id);
@@ -87,11 +93,28 @@ public static class JobPostsEndpoints
         })
         .WithName("GetJobCategories");
 
-        group.MapGet("/saved", async Task<Results<Ok<PagedResponse<JobIndexPostResponse>>, UnauthorizedHttpResult, NoContent>> (
+        group.MapGet("/statistics", async Task<Results<Ok<JobStatisticsResponse>, NoContent>> ([FromServices] IJobIndexPostsService service) =>
+        {
+            try
+            {
+                var stats = await service.GetStatisticsAsync();
+                return TypedResults.Ok(stats);
+            }
+            catch
+            {
+                return TypedResults.NoContent();
+            }
+        })
+        .WithName("GetJobStatistics");
+
+        group.MapGet("/saved", async Task<Results<Ok<PagedResponse<JobIndexPostResponse>>, BadRequest<string>, UnauthorizedHttpResult, NoContent>> (
             [FromQuery] int page,
             HttpContext httpContext,
             [FromServices] IJobIndexPostsService service) =>
         {
+            if (page < 1)
+                return TypedResults.BadRequest("Invalid page.");
+
             var userId = httpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userId))
                 return TypedResults.Unauthorized();
