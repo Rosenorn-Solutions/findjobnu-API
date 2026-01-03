@@ -93,16 +93,17 @@ public static class JobPostsEndpoints
         })
         .WithName("GetJobCategories");
 
-        group.MapGet("/statistics", async Task<Results<Ok<JobStatisticsResponse>, NoContent>> ([FromServices] IJobIndexPostsService service) =>
+        group.MapGet("/statistics", async Task<Results<Ok<JobStatisticsResponse>, ProblemHttpResult>> ([FromServices] IJobIndexPostsService service, ILogger<JobPostsEndpoints> logger) =>
         {
             try
             {
                 var stats = await service.GetStatisticsAsync();
                 return TypedResults.Ok(stats);
             }
-            catch
+            catch (Exception ex)
             {
-                return TypedResults.NoContent();
+                logger.LogError(ex, "Failed to get job statistics");
+                return TypedResults.Problem("Failed to get job statistics.");
             }
         })
         .WithName("GetJobStatistics");
