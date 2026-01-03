@@ -246,24 +246,30 @@ WHERE (@postedAfter IS NULL OR j.Published >= @postedAfter)
             var newJobsLastMonth = await _db.JobIndexPosts.CountAsync(j => j.Published >= monthAgo);
 
             var topCategories = await _db.Categories
-                .Select(c => new CategoryJobCountResponse(
+                .Select(c => new
+                {
                     c.CategoryID,
                     c.Name,
-                    c.JobIndexPosts.Count))
+                    NumberOfJobs = c.JobIndexPosts.Count()
+                })
                 .OrderByDescending(c => c.NumberOfJobs)
                 .ThenBy(c => c.Name)
                 .Take(10)
+                .Select(c => new CategoryJobCountResponse(c.CategoryID, c.Name, c.NumberOfJobs))
                 .ToListAsync();
 
             var topCategoriesLastWeek = await _db.Categories
-                .Select(c => new CategoryJobCountResponse(
+                .Select(c => new
+                {
                     c.CategoryID,
                     c.Name,
-                    c.JobIndexPosts.Count(j => j.Published >= weekAgo)))
+                    NumberOfJobs = c.JobIndexPosts.Count(j => j.Published >= weekAgo)
+                })
                 .Where(c => c.NumberOfJobs > 0)
                 .OrderByDescending(c => c.NumberOfJobs)
                 .ThenBy(c => c.Name)
                 .Take(5)
+                .Select(c => new CategoryJobCountResponse(c.CategoryID, c.Name, c.NumberOfJobs))
                 .ToListAsync();
 
             return new JobStatisticsResponse(
