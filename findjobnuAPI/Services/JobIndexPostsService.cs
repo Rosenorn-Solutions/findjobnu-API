@@ -250,7 +250,7 @@ WHERE (@postedAfter IS NULL OR j.Published >= @postedAfter)
                 {
                     c.CategoryID,
                     c.Name,
-                    NumberOfJobs = c.JobIndexPosts.Count()
+                    NumberOfJobs = c.JobIndexPosts.Count
                 })
                 .OrderByDescending(c => c.NumberOfJobs)
                 .ThenBy(c => c.Name)
