@@ -1,11 +1,13 @@
 namespace FindjobnuService.DTOs
 {
+    using FindjobnuService.Models;
+
     public class JobAgentDto
     {
         public int Id { get; set; }
         public int ProfileId { get; set; }
         public bool Enabled { get; set; }
-        public string Frequency { get; set; } = "Weekly";
+        public JobAgentFrequency Frequency { get; set; } = JobAgentFrequency.Weekly;
         public DateTime? LastSentAt { get; set; }
         public DateTime? NextSendAt { get; set; }
         public DateTime CreatedAt { get; set; }

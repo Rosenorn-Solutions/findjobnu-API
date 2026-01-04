@@ -15,7 +15,7 @@ namespace FindjobnuService.Mappers
                 Id = agent.Id,
                 ProfileId = agent.ProfileId,
                 Enabled = agent.Enabled,
-                Frequency = agent.Frequency.ToString(),
+                Frequency = agent.Frequency,
                 LastSentAt = agent.LastSentAt,
                 NextSendAt = agent.NextSendAt,
                 CreatedAt = agent.CreatedAt,
