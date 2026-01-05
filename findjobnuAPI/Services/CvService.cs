@@ -209,6 +209,15 @@ public class CvService : ICvService
         }
     }
 
+    private static readonly string[] SkillSectionHeaders = new[]
+    {
+        "skills", "kompetencer", "færdigheder", "technical skills", "core skills",
+        "key skills", "qualifications", "abilities", "expertise", "technologies",
+        "programming", "languages", "tools", "certifications", "tekniske kompetencer",
+        "nøglekompetencer", "kvalifikationer", "teknologier", "værktøjer", "programmering",
+        "it-kompetencer", "it kompetencer", "sprogkundskaber", "certificeringer"
+    };
+
     private CvExtractionResult ExtractProfileData(string text)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -221,13 +230,23 @@ public class CvService : ICvService
 
         var (firstName, lastName) = ParseName(lines);
         var phone = ParsePhone(text);
-        var about = ExtractSectionText(lines, new[] { "summary", "profile", "about", "om", "bio" });
-        var location = ParseLocation(lines);
-        var skillsSection = ExtractSectionText(lines, new[] { "skills", "kompetencer" });
+        var about = ExtractSectionText(lines, new[] { "summary", "profile", "about", "om", "bio", "profil", "resumé", "resume" });
+        var location = ParseLocation(lines, text);
+        
+        // Try to extract skills from dedicated section first
+        var skillsSection = ExtractSectionText(lines, SkillSectionHeaders);
         var skills = ParseSkills(skillsSection);
-        var experiencesSection = ExtractSectionText(lines, new[] { "experience", "erfaring", "work experience" });
+        
+        // If no skills found in section, scan entire document for known canonical skills
+        if (skills.Count == 0)
+        {
+            _logger.LogDebug("No skills section found, scanning entire document for known skills");
+            skills = ScanTextForKnownSkills(text);
+        }
+        
+        var experiencesSection = ExtractSectionText(lines, new[] { "experience", "erfaring", "work experience", "employment", "arbejdserfaring", "erhvervserfaring", "ansættelse", "career", "karriere" });
         var experiences = ParseExperiences(experiencesSection);
-        var educationsSection = ExtractSectionText(lines, new[] { "education", "uddannelse" });
+        var educationsSection = ExtractSectionText(lines, new[] { "education", "uddannelse", "academic", "akademisk", "studies", "studier", "training", "kurser" });
         var educations = ParseEducations(educationsSection);
 
         if (string.IsNullOrWhiteSpace(firstName) || string.IsNullOrWhiteSpace(lastName))
@@ -281,21 +300,90 @@ public class CvService : ICvService
         return match.Success ? match.Groups[2].Value.Trim() : string.Empty;
     }
 
-    private static string ParseLocation(IEnumerable<string> lines)
+    private string ParseLocation(IEnumerable<string> lines, string fullText)
     {
+        // Common location label patterns in English and Danish
+        var locationLabels = new[]
+        {
+            "location", "address", "city", "adresse", "by", "sted", "bopæl", 
+            "område", "region", "postnummer", "zip", "postal"
+        };
+
         foreach (var line in lines)
         {
-            if (line.StartsWith("Location", StringComparison.OrdinalIgnoreCase) ||
-                line.StartsWith("By", StringComparison.OrdinalIgnoreCase) ||
-                line.StartsWith("Sted", StringComparison.OrdinalIgnoreCase))
+            var lower = line.ToLowerInvariant().Trim();
+            
+            // Check for labeled location (e.g., "Location: Copenhagen")
+            foreach (var label in locationLabels)
             {
-                var parts = line.Split(':', 2);
-                if (parts.Length == 2)
+                if (lower.StartsWith(label))
                 {
-                    return parts[1].Trim();
+                    var colonIndex = line.IndexOf(':');
+                    if (colonIndex >= 0 && colonIndex < line.Length - 1)
+                    {
+                        return line.Substring(colonIndex + 1).Trim();
+                    }
+                    // Handle "Location Copenhagen" without colon
+                    var afterLabel = line.Substring(label.Length).Trim();
+                    if (!string.IsNullOrWhiteSpace(afterLabel))
+                    {
+                        return afterLabel.TrimStart(':', ' ');
+                    }
                 }
             }
         }
+
+        // Try to find Danish postal code pattern (4 digits followed by city name)
+        foreach (var line in lines)
+        {
+            var postalMatch = Regex.Match(line, @"\b(\d{4})\s+([A-ZÆØÅa-zæøå][a-zæøå]+(?:\s+[A-ZÆØÅa-zæøå][a-zæøå]+)?)\b");
+            if (postalMatch.Success)
+            {
+                return postalMatch.Value.Trim();
+            }
+        }
+
+        // Scan for city names from the database
+        return ScanTextForKnownCities(fullText);
+    }
+
+    /// <summary>
+    /// Scans the text for known city names from the database.
+    /// </summary>
+    private string ScanTextForKnownCities(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return string.Empty;
+        }
+
+        // Get all cities from the database
+        var cities = _db.Cities
+            .AsNoTracking()
+            .Select(c => c.Name)
+            .ToList();
+
+        if (cities.Count == 0)
+        {
+            _logger.LogWarning("No cities found in database for location parsing");
+            return string.Empty;
+        }
+
+        // Sort by length descending to match longer city names first (e.g., "København V" before "København")
+        var sortedCities = cities.OrderByDescending(c => c.Length).ToList();
+
+        foreach (var city in sortedCities)
+        {
+            // Use word boundary matching to avoid partial matches
+            var pattern = $@"\b{Regex.Escape(city)}\b";
+            var match = Regex.Match(text, pattern, RegexOptions.IgnoreCase);
+            if (match.Success)
+            {
+                _logger.LogDebug("Found city '{City}' in CV text", city);
+                return city;
+            }
+        }
+
         return string.Empty;
     }
 
@@ -306,18 +394,33 @@ public class CvService : ICvService
         foreach (var line in lines)
         {
             var lower = line.Trim().ToLowerInvariant();
-            if (sectionHeaders.Any(h => lower.StartsWith(h)))
+            
+            // Check if line contains any section header (not just starts with)
+            var matchedHeader = sectionHeaders.FirstOrDefault(h => 
+                lower.StartsWith(h) || 
+                lower.Contains(h + ":") ||
+                lower.Contains(h + " :") ||
+                lower == h);
+            
+            if (matchedHeader != null)
             {
                 inSection = true;
-                var parts = line.Split(':', 2, StringSplitOptions.TrimEntries);
-                if (parts.Length == 2 && !string.IsNullOrWhiteSpace(parts[1]))
+                // Try to extract content after the header on same line
+                var colonIndex = line.IndexOf(':');
+                if (colonIndex >= 0 && colonIndex < line.Length - 1)
                 {
-                    content.Add(parts[1]);
+                    var afterColon = line.Substring(colonIndex + 1).Trim();
+                    if (!string.IsNullOrWhiteSpace(afterColon))
+                    {
+                        content.Add(afterColon);
+                    }
                 }
                 continue;
             }
 
-            var isStopHeader = DefaultSectionKeywords.Any(h => lower.StartsWith(h)) && !sectionHeaders.Any(h => lower.StartsWith(h));
+            // Check for stop headers (other sections starting)
+            var isStopHeader = DefaultSectionKeywords.Any(h => lower.StartsWith(h) || lower == h) && 
+                               !sectionHeaders.Any(h => lower.StartsWith(h) || lower == h);
             if (inSection && isStopHeader)
             {
                 break;
@@ -331,14 +434,55 @@ public class CvService : ICvService
         return string.Join('\n', content);
     }
 
+    /// <summary>
+    /// Scans the entire text for known canonical skills from the taxonomy.
+    /// Used as fallback when no dedicated skills section is found.
+    /// </summary>
+    private List<Skill> ScanTextForKnownSkills(string text)
+    {
+        var skills = new List<Skill>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // Get all canonical skills from taxonomy
+        var canonicalSkills = _skillTaxonomy.CanonicalSkills;
+        if (canonicalSkills.Count == 0)
+        {
+            _logger.LogWarning("Skill taxonomy is empty - cannot scan for known skills");
+            return skills;
+        }
+
+        var textLower = text.ToLowerInvariant();
+
+        foreach (var canonical in canonicalSkills)
+        {
+            // Use word boundary matching to avoid partial matches
+            var pattern = $@"\b{Regex.Escape(canonical)}\b";
+            if (Regex.IsMatch(text, pattern, RegexOptions.IgnoreCase))
+            {
+                if (seen.Add(canonical))
+                {
+                    skills.Add(new Skill
+                    {
+                        Name = canonical,
+                        Proficiency = SkillProficiency.Intermediate
+                    });
+                }
+            }
+        }
+
+        _logger.LogDebug("Found {Count} skills by scanning document", skills.Count);
+        return skills;
+    }
+
     private List<Skill> ParseSkills(string sectionText)
     {
         var skills = new List<Skill>();
         if (string.IsNullOrWhiteSpace(sectionText)) return skills;
 
-        var tokens = sectionText
-            .Split(['\n', ',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(t => t.Length <= 80);
+        // Split by common delimiters: newlines, commas, semicolons, pipes, bullets
+        var tokens = Regex.Split(sectionText, @"[\n,;|•·??????–—\-]")
+            .Select(t => t.Trim())
+            .Where(t => !string.IsNullOrWhiteSpace(t) && t.Length <= 80 && t.Length >= 2);
 
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -347,7 +491,15 @@ public class CvService : ICvService
             var cleaned = token.Trim();
             if (string.IsNullOrWhiteSpace(cleaned)) continue;
             if (cleaned.StartsWith("%", StringComparison.Ordinal)) continue;
+            if (cleaned.StartsWith("•") || cleaned.StartsWith("?")) 
+            {
+                cleaned = cleaned.TrimStart('•', '?', ' ');
+            }
             if (!cleaned.Any(char.IsLetterOrDigit)) continue;
+            
+            // Skip if it looks like a sentence (too many words)
+            var wordCount = cleaned.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
+            if (wordCount > 5) continue;
 
             var name = _skillTaxonomy.TryNormalize(cleaned, out var canonical)
                 ? canonical
@@ -371,23 +523,199 @@ public class CvService : ICvService
         var experiences = new List<Experience>();
         if (string.IsNullOrWhiteSpace(sectionText)) return experiences;
 
-        var chunks = SplitByBlankLines(sectionText);
+        // Try to split by date patterns first (more reliable than blank lines)
+        var chunks = SplitByExperienceMarkers(sectionText);
+        
         foreach (var chunk in chunks)
         {
             var lines = chunk.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             if (lines.Length == 0) continue;
-            var first = lines[0];
-            var (company, role) = ParseCompanyAndRole(first);
-            var description = string.Join('\n', lines.Skip(1));
-            experiences.Add(new Experience
+
+            var experience = ParseSingleExperience(lines);
+            if (experience != null && !string.IsNullOrWhiteSpace(experience.Company))
             {
-                Company = company,
-                PositionTitle = role,
-                Description = description
-            });
+                experiences.Add(experience);
+            }
         }
 
         return experiences;
+    }
+
+    private static List<string> SplitByExperienceMarkers(string sectionText)
+    {
+        // First try splitting by blank lines
+        var chunks = SplitByBlankLines(sectionText);
+        
+        // If only one chunk, try splitting by date patterns
+        if (chunks.Count <= 1 && !string.IsNullOrWhiteSpace(sectionText))
+        {
+            // Pattern for dates like "2020 - 2023", "Jan 2020 - Present", "2020-present", "2019 – nu"
+            var datePattern = @"(?=\n(?:\d{4}|\w{3,}\s+\d{4})\s*[-–—]\s*(?:\d{4}|present|nu|current|ongoing|now|i dag))";
+            var splitChunks = Regex.Split(sectionText, datePattern, RegexOptions.IgnoreCase);
+            
+            if (splitChunks.Length > 1)
+            {
+                chunks = splitChunks.Where(c => !string.IsNullOrWhiteSpace(c)).ToList();
+            }
+        }
+        
+        return chunks;
+    }
+
+    private static Experience? ParseSingleExperience(string[] lines)
+    {
+        if (lines.Length == 0) return null;
+
+        string company = string.Empty;
+        string role = string.Empty;
+        string? dateRange = null;
+        var descriptionLines = new List<string>();
+
+        // Date pattern to identify date lines
+        var datePattern = @"(\d{4}|\w{3,}\s+\d{4})\s*[-–—]\s*(\d{4}|present|nu|current|ongoing|now|i dag|dato)";
+        
+        for (int i = 0; i < lines.Length; i++)
+        {
+            var line = lines[i].Trim();
+            
+            // Check if line contains a date range
+            var dateMatch = Regex.Match(line, datePattern, RegexOptions.IgnoreCase);
+            if (dateMatch.Success)
+            {
+                dateRange = dateMatch.Value;
+                // Remove date from line to get remaining content
+                var remaining = Regex.Replace(line, datePattern, "", RegexOptions.IgnoreCase).Trim().Trim('-', '–', '—', '|', ' ');
+                
+                if (!string.IsNullOrWhiteSpace(remaining))
+                {
+                    // The remaining part might be company or role
+                    if (string.IsNullOrEmpty(company))
+                    {
+                        var (comp, r) = ParseCompanyAndRole(remaining);
+                        company = comp;
+                        if (!string.IsNullOrEmpty(r)) role = r;
+                    }
+                    else if (string.IsNullOrEmpty(role))
+                    {
+                        role = remaining;
+                    }
+                }
+                continue;
+            }
+            
+            // First non-date line is likely company/role
+            if (i == 0 || (string.IsNullOrEmpty(company) && i <= 2))
+            {
+                // Check for common separators: dash, pipe, at sign, comma
+                if (line.Contains(" - ") || line.Contains(" – ") || line.Contains(" | ") || line.Contains(" @ "))
+                {
+                    var (comp, r) = ParseCompanyAndRole(line);
+                    if (string.IsNullOrEmpty(company)) company = comp;
+                    if (string.IsNullOrEmpty(role) && !string.IsNullOrEmpty(r)) role = r;
+                }
+                else if (string.IsNullOrEmpty(company))
+                {
+                    // Might be just company name or just role
+                    // Heuristic: if it looks like a title (contains common job words), it's a role
+                    if (LooksLikeJobTitle(line))
+                    {
+                        role = line;
+                    }
+                    else
+                    {
+                        company = line;
+                    }
+                }
+                else if (string.IsNullOrEmpty(role))
+                {
+                    role = line;
+                }
+                else
+                {
+                    descriptionLines.Add(line);
+                }
+            }
+            else
+            {
+                descriptionLines.Add(line);
+            }
+        }
+
+        // If we only got a role but no company, swap them
+        if (string.IsNullOrEmpty(company) && !string.IsNullOrEmpty(role))
+        {
+            company = role;
+            role = string.Empty;
+        }
+
+        var description = string.Join('\n', descriptionLines);
+        
+        // Include date range in description if found
+        if (!string.IsNullOrEmpty(dateRange) && !description.Contains(dateRange))
+        {
+            description = string.IsNullOrEmpty(description) 
+                ? dateRange 
+                : $"{dateRange}\n{description}";
+        }
+
+        return new Experience
+        {
+            Company = company,
+            PositionTitle = role,
+            Description = description.Trim()
+        };
+    }
+
+    private static bool LooksLikeJobTitle(string text)
+    {
+        var jobTitleKeywords = new[]
+        {
+            "manager", "developer", "engineer", "consultant", "analyst", "designer",
+            "director", "lead", "senior", "junior", "specialist", "coordinator",
+            "assistant", "administrator", "executive", "officer", "head", "chief",
+            "intern", "trainee", "associate", "partner", "founder", "owner",
+            // Danish
+            "leder", "udvikler", "ingeniør", "konsulent", "analytiker", "designer",
+            "direktør", "chef", "senior", "junior", "specialist", "koordinator",
+            "assistent", "administrator", "praktikant", "elev", "partner", "ejer",
+            "medarbejder", "rådgiver", "projektleder", "teamleder", "afdelingsleder"
+        };
+
+        var lower = text.ToLowerInvariant();
+        return jobTitleKeywords.Any(k => lower.Contains(k));
+    }
+
+    private static (string Company, string Role) ParseCompanyAndRole(string line)
+    {
+        if (string.IsNullOrWhiteSpace(line)) return (string.Empty, string.Empty);
+        
+        // Try different separators in order of preference
+        var separators = new[] { " - ", " – ", " — ", " | ", " @ ", ", " };
+        
+        foreach (var sep in separators)
+        {
+            if (line.Contains(sep))
+            {
+                var parts = line.Split(new[] { sep }, 2, StringSplitOptions.TrimEntries);
+                if (parts.Length == 2)
+                {
+                    // Heuristic: if second part looks like a job title, it's the role
+                    if (LooksLikeJobTitle(parts[1]))
+                    {
+                        return (parts[0], parts[1]);
+                    }
+                    // Otherwise first part might be role
+                    if (LooksLikeJobTitle(parts[0]))
+                    {
+                        return (parts[1], parts[0]);
+                    }
+                    // Default: first is company, second is role
+                    return (parts[0], parts[1]);
+                }
+            }
+        }
+        
+        return (line, string.Empty);
     }
 
     private static List<Education> ParseEducations(string sectionText)
@@ -396,7 +724,8 @@ public class CvService : ICvService
         if (string.IsNullOrWhiteSpace(sectionText)) return educations;
 
         var chunks = SplitByBlankLines(sectionText);
-        foreach (var chunk in chunks)
+        foreach (var chunk in chunks
+)
         {
             var lines = chunk.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             if (lines.Length == 0) continue;
@@ -442,17 +771,6 @@ public class CvService : ICvService
             results.Add(sb.ToString().Trim());
         }
         return results;
-    }
-
-    private static (string Company, string Role) ParseCompanyAndRole(string line)
-    {
-        if (string.IsNullOrWhiteSpace(line)) return (string.Empty, string.Empty);
-        if (line.Contains('-'))
-        {
-            var parts = line.Split('-', 2, StringSplitOptions.TrimEntries);
-            return (parts[0], parts.Length > 1 ? parts[1] : string.Empty);
-        }
-        return (line, string.Empty);
     }
 
     private static bool LooksLikePdf(Stream stream)
@@ -917,7 +1235,8 @@ public class CvService : ICvService
     private static readonly string[] DefaultSectionKeywords = new[]
     {
         "experience", "education", "skills", "projects", "summary", "profile",
-        "erfaring", "uddannelse", "færdigheder", "projekter", "om", "om mig", "bio", "profil", "kontakt"
+        "erfaring", "uddannelse", "færdigheder", "projekter", "om", "om mig", "bio", "profil", "kontakt",
+        "work experience", "employment", "career", "karriere", "arbejdserfaring"
     };
 
     private static CvReadabilitySummary BuildSummary(string text)
@@ -943,8 +1262,11 @@ public class CvService : ICvService
 
         var hasEmail = Regex.IsMatch(text, @"[A-Z0-9._%+-]+\s*@\s*[A-Z0-9.-]+\s*\.\s*[A-Z]{2,}", RegexOptions.IgnoreCase);
         var hasPhone = Regex.IsMatch(text, @"(\n|\s)(\+?\d[\d\s().-]{6,}\d)");
-        var bulletCount = Regex.Matches(text, @"(^|\n)[\u2022\-*] \s?").Count;
-        var matchedSections = DefaultSectionKeywords.Count(k => Regex.IsMatch(text, $@"(^|\n)\s*{Regex.Escape(k)}\b", RegexOptions.IgnoreCase));
+
+        var bulletCount = Regex.Matches(text, @"(^|\n)[\u2022\-*•] \s?").Count;
+        
+        var matchedSections = DefaultSectionKeywords.Count(k => 
+            Regex.IsMatch(text, $@"(^|\n)\s*{Regex.Escape(k)}\b", RegexOptions.IgnoreCase | RegexOptions.Multiline));
 
         return new CvReadabilitySummary(
             TotalChars: totalChars,
@@ -973,7 +1295,7 @@ public class CvService : ICvService
         if (Regex.IsMatch(text, @"[A-Z0-9._%+-]+\s*@\s*[A-Z0-9.-]+\s*\.\s*[A-Z]{2,}", RegexOptions.IgnoreCase)) score += 10;
         if (Regex.IsMatch(text, @"(\n|\s)(\+?\d[\d\s().-]{6,}\d)")) score += 5;
 
-        var bulletCount = Regex.Matches(text, @"(^|\n)[\u2022\-*] \s?").Count;
+        var bulletCount = Regex.Matches(text, @"(^|\n)[\u2022\-*•] \s?").Count;
         score += Math.Min(10, bulletCount);
 
         var sectionKeywords = new[] { "experience", "education", "skills", "projects", "summary", "profile", "erfaring", "uddannelse", "færdigheder", "projekter", "om", "om mig", "bio", "profil", "resumé", "resume" };
