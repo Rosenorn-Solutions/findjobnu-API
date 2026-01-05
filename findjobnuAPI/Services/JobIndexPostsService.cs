@@ -13,17 +13,19 @@ namespace FindjobnuService.Services
         private readonly FindjobnuContext _db;
         private readonly ILogger<JobIndexPostsService> _logger;
         private readonly IMemoryCache _cache;
+        private readonly IMLRecommendationService? _mlService;
 
-        public JobIndexPostsService(FindjobnuContext db, ILogger<JobIndexPostsService> logger, IMemoryCache cache)
+        public JobIndexPostsService(FindjobnuContext db, ILogger<JobIndexPostsService> logger, IMemoryCache cache, IMLRecommendationService? mlService = null)
         {
             _db = db;
             _logger = logger;
             _cache = cache;
+            _mlService = mlService;
         }
 
         // Backward-compatible constructor used by worker/tests
         public JobIndexPostsService(FindjobnuContext db, ILogger<JobIndexPostsService> logger)
-            : this(db, logger, new MemoryCache(new MemoryCacheOptions()))
+            : this(db, logger, new MemoryCache(new MemoryCacheOptions()), null)
         {
         }
 
@@ -193,7 +195,7 @@ WHERE (@postedAfter IS NULL OR j.Published >= @postedAfter)
 
             _cache.Set(cacheKey, result, new MemoryCacheEntryOptions
             {
-                AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(2)
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(30)
             });
 
             return result;
@@ -303,17 +305,86 @@ WHERE (@postedAfter IS NULL OR j.Published >= @postedAfter)
             if (page < 1) page = 1;
             if (pageSize < 1) pageSize = 20;
 
-            var cacheKey = $"rec:{userId}:{page}:{pageSize}";
-            if (!_cache.TryGetValue<PagedList<JobIndexPosts>>(cacheKey, out var baseResult) || baseResult == null)
+            // Try ML-based recommendations first
+            if (_mlService != null)
+            {
+                var cacheKey = $"ml_rec_filtered:{userId}:{page}:{pageSize}";
+                if (!_cache.TryGetValue<PagedList<JobIndexPosts>>(cacheKey, out var cachedResult) || cachedResult == null)
+                {
+                    cachedResult = await BuildMLRecommendations(userId, page, pageSize);
+                    _cache.Set(cacheKey, cachedResult, new MemoryCacheEntryOptions
+                    {
+                        AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(30)
+                    });
+                }
+                return ApplyRecommendationFilters(cachedResult, request, page, pageSize);
+            }
+
+            // Fallback to keyword-based recommendations
+            var fallbackCacheKey = $"rec:{userId}:{page}:{pageSize}";
+            if (!_cache.TryGetValue<PagedList<JobIndexPosts>>(fallbackCacheKey, out var baseResult) || baseResult == null)
             {
                 baseResult = await BuildRecommendations(userId, page, pageSize);
-                _cache.Set(cacheKey, baseResult, new MemoryCacheEntryOptions
+                _cache.Set(fallbackCacheKey, baseResult, new MemoryCacheEntryOptions
                 {
-                    AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(2)
+                    AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(30)
                 });
             }
 
             return ApplyRecommendationFilters(baseResult, request, page, pageSize);
+        }
+
+        private async Task<PagedList<JobIndexPosts>> BuildMLRecommendations(string userId, int page, int pageSize)
+        {
+            try
+            {
+                var profile = await _db.Profiles
+                    .Include(p => p.BasicInfo)
+                    .Include(p => p.Experiences)
+                    .Include(p => p.Educations)
+                    .Include(p => p.Interests)
+                    .Include(p => p.Accomplishments)
+                    .Include(p => p.Contacts)
+                    .Include(p => p.Skills)
+                    .FirstOrDefaultAsync(x => x.UserId == userId);
+
+                if (profile == null)
+                    return new PagedList<JobIndexPosts>(0, pageSize, page, []);
+
+                // Get ML-scored recommendations
+                var mlRecommendations = await _mlService!.GetRecommendationsAsync(userId, profile, 500);
+                
+                if (mlRecommendations.Count == 0)
+                    return new PagedList<JobIndexPosts>(0, pageSize, page, []);
+
+                // Get the actual job posts for the recommended job IDs
+                var jobIds = mlRecommendations.Select(r => r.JobId).ToList();
+                var jobs = await _db.JobIndexPosts
+                    .Include(j => j.Categories)
+                    .AsNoTracking()
+                    .Where(j => jobIds.Contains(j.JobID))
+                    .ToListAsync();
+
+                // Sort jobs by ML score
+                var mlScoreDict = mlRecommendations.ToDictionary(r => r.JobId, r => r.Score);
+                var sortedJobs = jobs
+                    .OrderByDescending(j => mlScoreDict.GetValueOrDefault(j.JobID, 0))
+                    .ToList();
+
+                // Apply pagination
+                var totalCount = sortedJobs.Count;
+                var pagedJobs = sortedJobs
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
+                    .ToList();
+
+                return new PagedList<JobIndexPosts>(totalCount, pageSize, page, pagedJobs);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error building ML recommendations for user {UserId}, falling back to keyword-based", userId);
+                return await BuildRecommendations(userId, page, pageSize);
+            }
         }
 
         private async Task<PagedList<JobIndexPosts>> BuildRecommendations(string userId, int page, int pageSize)

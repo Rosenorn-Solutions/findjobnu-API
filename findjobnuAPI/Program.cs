@@ -108,6 +108,7 @@ namespace FindjobnuService
             builder.Services.AddHttpClient();
             builder.Services.AddScoped<IProfileService, ProfileService>();
             builder.Services.AddScoped<IJobIndexPostsService, JobIndexPostsService>();
+            builder.Services.AddScoped<IMLRecommendationService, MLRecommendationService>();
             builder.Services.AddScoped<INewsletterService, NewsletterService>();
             builder.Services.AddScoped<ILinkedInProfileService>(provider =>
             {

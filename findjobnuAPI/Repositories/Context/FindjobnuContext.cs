@@ -22,12 +22,54 @@ namespace FindjobnuService.Repositories.Context
         public DbSet<JobKeyword> JobKeywords { get; set; }
         public DbSet<JobAgent> JobAgents { get; set; }
         public DbSet<NewsletterSubscription> NewsletterSubscriptions { get; set; }
+        public DbSet<UserJobInteraction> UserJobInteractions { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
             modelBuilder.Entity<JobIndexPosts>().ToTable("JobIndexPostingsExtended").HasKey(s => s.JobID);
             modelBuilder.Entity<JobIndexPosts>().HasIndex(s => s.JobUrl).IsUnique();
+
+            modelBuilder.Entity<City>(entity =>
+            {
+                entity.ToTable("Cities");
+                entity.HasKey(s => s.Id);
+                entity.Property(s => s.Name).IsRequired().HasMaxLength(200);
+                entity.Property(s => s.Slug).IsRequired().HasMaxLength(128);
+                entity.Property(s => s.ExternalId).IsRequired();
+                entity.HasIndex(s => s.Name);
+                entity.HasIndex(s => s.Slug).IsUnique();
+                entity.HasIndex(s => s.ExternalId).IsUnique();
+            });
+
+            modelBuilder.Entity<Profile>().HasKey(p => p.Id);
+            modelBuilder.Entity<Profile>()
+                .HasIndex(p => p.UserId)
+                .IsUnique();
+
+            modelBuilder.Entity<NewsletterSubscription>(entity =>
+            {
+                entity.ToTable("NewsletterSubscriptions");
+                entity.Property(n => n.Email).IsRequired().HasMaxLength(320);
+                entity.HasIndex(n => n.Email).IsUnique();
+            });
+
+            // UserJobInteraction configuration
+            modelBuilder.Entity<UserJobInteraction>(entity =>
+            {
+                entity.ToTable("UserJobInteractions");
+                entity.HasKey(i => i.Id);
+                entity.Property(i => i.UserId).IsRequired().HasMaxLength(450);
+                entity.HasIndex(i => i.UserId);
+                entity.HasIndex(i => i.JobId);
+                entity.HasIndex(i => new { i.UserId, i.JobId });
+                entity.HasIndex(i => i.InteractionDate);
+                
+                entity.HasOne(i => i.Job)
+                    .WithMany()
+                    .HasForeignKey(i => i.JobId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
 
             modelBuilder.Entity<City>(entity =>
             {
