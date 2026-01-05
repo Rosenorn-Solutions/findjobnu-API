@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SharedInfrastructure.Cities;
+using SharedInfrastructure.Skills;
 
 
 namespace FindjobnuService.Repositories.Context
@@ -12,6 +13,8 @@ namespace FindjobnuService.Repositories.Context
         public DbSet<JobIndexPosts> JobIndexPosts { get; set; }
         public DbSet<Category> Categories { get; set; }
         public DbSet<City> Cities { get; set; }
+        public DbSet<CanonicalSkill> CanonicalSkills { get; set; }
+        public DbSet<SkillSynonym> SkillSynonyms { get; set; }
         public DbSet<Profile> Profiles { get; set; }
         public DbSet<Experience> Experiences { get; set; }
         public DbSet<Education> Educations { get; set; }
@@ -39,6 +42,31 @@ namespace FindjobnuService.Repositories.Context
                 entity.HasIndex(s => s.Name);
                 entity.HasIndex(s => s.Slug).IsUnique();
                 entity.HasIndex(s => s.ExternalId).IsUnique();
+            });
+
+            modelBuilder.Entity<CanonicalSkill>(entity =>
+            {
+                entity.ToTable("CanonicalSkills");
+                entity.HasKey(s => s.Id);
+                entity.Property(s => s.Name).IsRequired().HasMaxLength(200);
+                entity.Property(s => s.Slug).IsRequired().HasMaxLength(128);
+                entity.Property(s => s.Category).HasMaxLength(100);
+                entity.Property(s => s.ExternalId).IsRequired();
+                entity.HasIndex(s => s.Name);
+                entity.HasIndex(s => s.Slug).IsUnique();
+                entity.HasIndex(s => s.ExternalId).IsUnique();
+                entity.HasMany(s => s.Synonyms)
+                    .WithOne(syn => syn.CanonicalSkill)
+                    .HasForeignKey(syn => syn.CanonicalSkillId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<SkillSynonym>(entity =>
+            {
+                entity.ToTable("SkillSynonyms");
+                entity.HasKey(s => s.Id);
+                entity.Property(s => s.Synonym).IsRequired().HasMaxLength(200);
+                entity.HasIndex(s => s.Synonym);
             });
 
             modelBuilder.Entity<Profile>().HasKey(p => p.Id);

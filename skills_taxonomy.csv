@@ -1,0 +1,824 @@
+CanonicalName,Category,Synonyms
+.NET,Programming,dotnet|.net core|.net framework
+C#,Programming,csharp|c-sharp|c sharp
+C++,Programming,cpp|c plus plus|cplusplus
+C,Programming,
+Java,Programming,
+JavaScript,Programming,js|ecmascript|es6
+TypeScript,Programming,ts
+Python,Programming,py|python3
+R,Programming,
+Ruby,Programming,rb
+Go,Programming,golang
+Rust,Programming,rustlang
+Swift,Programming,
+Kotlin,Programming,
+Scala,Programming,
+PHP,Programming,
+Perl,Programming,
+Objective-C,Programming,
+Dart,Programming,
+Lua,Programming,
+MATLAB,Programming,
+Bash,Programming,
+PowerShell,Programming,
+Shell Scripting,Programming,
+SQL,Database,
+NoSQL,Database,
+PostgreSQL,Database,postgres|psql
+MySQL,Database,
+SQL Server,Database,sqlserver|mssql|ms sql|microsoft sql server|t-sql
+MongoDB,Database,mongo
+Redis,Database,
+Elasticsearch,Database,elastic
+Cassandra,Database,
+DynamoDB,Database,dynamo|dynamodb
+MariaDB,Database,mariadb
+SQLite,Database,
+Oracle Database,Database,oracledb|oracle db
+Neo4j,Database,
+Couchbase,Database,
+Azure,Cloud,microsoft azure|azure cloud
+AWS,Cloud,aws cloud|amazon web services|amazon aws
+GCP,Cloud,google cloud|google cloud platform
+Docker,DevOps,
+Kubernetes,DevOps,k8s|kube|openshift
+Git,DevOps,
+CI/CD,DevOps,azure devops|github actions|gitlab ci|gitlab-ci|circleci|travis ci|bamboo|teamcity|devops|devsecops
+Jenkins,DevOps,
+Terraform,DevOps,infrastructure as code|iac
+Ansible,DevOps,
+Puppet,DevOps,
+Chef,DevOps,
+Vagrant,DevOps,
+Linux,Infrastructure,
+Windows Server,Infrastructure,
+Networking,Infrastructure,
+Virtualization,Infrastructure,
+VMware,Infrastructure,
+Hyper-V,Infrastructure,
+Load Balancing,Infrastructure,
+DNS,Infrastructure,
+Firewalls,Infrastructure,
+VPN,Infrastructure,
+Active Directory,Infrastructure,
+LDAP,Infrastructure,
+HTML,Frontend,
+CSS,Frontend,
+SASS,Frontend,
+LESS,Frontend,
+Tailwind CSS,Frontend,
+Bootstrap,Frontend,
+React,Frontend,reactjs|react.js
+Angular,Frontend,angularjs|angular.js
+Vue,Frontend,vuejs|vue.js
+Svelte,Frontend,sveltejs
+Next.js,Frontend,nextjs
+Nuxt.js,Frontend,nuxtjs
+Node.js,Backend,node|nodejs
+Express.js,Backend,express|expressjs
+Nest.js,Backend,nestjs
+Django,Backend,
+Flask,Backend,
+FastAPI,Backend,
+Ruby on Rails,Backend,
+Spring Boot,Backend,
+Laravel,Backend,
+Symfony,Backend,
+ASP.NET,Backend,aspnet|asp.net|asp.net core|asp.net mvc
+Entity Framework,Backend,entityframework|ef core|ef
+Blazor,Backend,
+.NET MAUI,Mobile,
+WPF,Desktop,
+WinForms,Desktop,
+Xamarin,Mobile,
+Flutter,Mobile,
+React Native,Mobile,
+Ionic,Mobile,
+Electron,Desktop,
+REST,API,
+GraphQL,API,
+gRPC,API,
+SOAP,API,
+WebSockets,API,
+OAuth,Security,
+JWT,Security,
+API Design,Architecture,
+Microservices,Architecture,
+Serverless,Architecture,
+Event-Driven Architecture,Architecture,
+Message Queues,Architecture,
+RabbitMQ,Architecture,rabbitmq|rabbit mq
+Apache Kafka,Architecture,kafka
+Azure Service Bus,Architecture,
+Agile,Project Management,
+Scrum,Project Management,
+Kanban,Project Management,
+Lean,Project Management,
+Six Sigma,Project Management,
+Waterfall,Project Management,
+SAFe,Project Management,
+Project Management,Project Management,pm|projektledelse|projektstyring
+Product Management,Project Management,product manager|produktchef
+Program Management,Project Management,programstyring
+Portfolio Management,Project Management,porteføljestyring
+Business Analysis,Business,ba|forretningsanalyse
+Requirements Gathering,Business,kravindsamling
+Stakeholder Management,Business,interessenthåndtering
+Change Management,Business,forandringsledelse
+Risk Management,Business,risikostyring
+ITIL,Business,
+PRINCE2,Business,
+PMP,Business,
+ServiceNow,Business,
+Jira,Tools,jira
+Confluence,Tools,confluence
+Trello,Tools,trello
+Asana,Tools,asana
+Monday.com,Tools,monday
+Microsoft Project,Tools,ms project
+Salesforce,CRM,salesforce crm|sfdc
+HubSpot,CRM,hubspot crm
+Dynamics 365,CRM,ms dynamics|dynamics crm|d365
+Zoho CRM,CRM,
+Pipedrive,CRM,
+CRM,Business,
+ERP,Business,
+SAP,ERP,
+Oracle ERP,ERP,
+NetSuite,ERP,
+Odoo,ERP,
+Microsoft Dynamics,ERP,navision
+Excel,Office,ms excel|microsoft excel
+Word,Office,ms word|microsoft word
+PowerPoint,Office,ms powerpoint|microsoft powerpoint
+Outlook,Office,
+Microsoft 365,Office,
+Google Workspace,Office,g suite
+SharePoint,Office,
+OneDrive,Office,
+Teams,Office,
+Slack,Office,
+Zoom,Office,
+Power BI,Data,powerbi|power-bi
+Tableau,Data,tableau desktop
+Looker,Data,
+Qlik,Data,qlikview|qliksense
+Metabase,Data,
+Data Analysis,Data,data analytics|data analyst|dataanalyse|business intelligence|bi
+Data Visualization,Data,
+Data Modeling,Data,
+Data Warehousing,Data,
+ETL,Data,etl pipelines|data integration
+Data Engineering,Data,
+Data Science,Data,
+Machine Learning,AI,ml|machine-learning
+Deep Learning,AI,dl|deep-learning
+Natural Language Processing,AI,nlp
+Computer Vision,AI,cv
+Artificial Intelligence,AI,ai|artificial intelligence
+Neural Networks,AI,neural nets
+TensorFlow,AI,tf|tensorflow
+PyTorch,AI,pytorch
+Scikit-learn,AI,sklearn|scikit learn
+Keras,AI,
+OpenCV,AI,
+Pandas,Data,
+NumPy,Data,
+Jupyter,Data,
+Statistics,Data,statistical analysis|statistik
+Predictive Analytics,Data,
+A/B Testing,Data,
+Data Mining,Data,
+Big Data,Data,
+Hadoop,Data,
+Spark,Data,
+Databricks,Data,
+Snowflake,Data,
+Data Entry,Data,
+Data Quality,Data,
+Master Data Management,Data,
+Customer Service,Customer Service,customer care|kundeservice|service|kunderejse
+Customer Support,Customer Service,kundesupport|servicekoordinator|support
+Technical Support,Customer Service,tech support|teknisk support|it support|it-support
+Help Desk,Customer Service,helpdesk
+Call Center,Customer Service,callcentre|call center|kontaktcenter|kundecentre
+Live Chat Support,Customer Service,
+Complaint Handling,Customer Service,
+Customer Experience,Customer Service,
+Customer Success,Customer Service,
+Client Relations,Customer Service,
+Retail Sales,Sales,salg|detailsalg
+B2B Sales,Sales,b2b salg|b2b|erhvervssalg
+B2C Sales,Sales,b2c
+Inside Sales,Sales,
+Outside Sales,Sales,
+Field Sales,Sales,
+Enterprise Sales,Sales,
+Solution Selling,Sales,
+Consultative Selling,Sales,
+Lead Generation,Sales,lead gen|leadgenerering
+Cold Calling,Sales,cold outreach|kold kanvas
+Prospecting,Sales,
+Sales Pipeline,Sales,
+CRM Management,Sales,
+Account Management,Sales,account manager|kontoansvarlig
+Key Account Management,Sales,kundechef|kam
+Territory Management,Sales,
+Sales Forecasting,Sales,
+Negotiation,Sales,forhandling|forhandlingsteknik
+Closing,Sales,
+Upselling,Sales,
+Cross-selling,Sales,
+Presentation Skills,Communication,
+Public Speaking,Communication,
+Marketing,Marketing,markedsføring
+Digital Marketing,Marketing,digital markedsføring|online markedsføring
+Content Marketing,Marketing,content markedsføring|indholdsmarkedsføring
+Inbound Marketing,Marketing,
+Outbound Marketing,Marketing,
+Brand Management,Marketing,branding
+Brand Strategy,Marketing,varemærkestrategi
+SEO,Marketing,search engine optimization|søgemaskineoptimering
+SEM,Marketing,search engine marketing|sem
+PPC,Marketing,ppc|pay per click
+Google Ads,Marketing,google adwords|adwords
+Facebook Ads,Marketing,fb ads|meta ads
+LinkedIn Ads,Marketing,
+Display Advertising,Marketing,
+Programmatic Advertising,Marketing,
+Affiliate Marketing,Marketing,
+Influencer Marketing,Marketing,
+Content Writing,Marketing,indholdsskrivning
+Copywriting,Marketing,tekstforfatning|tekstforfatter
+Technical Writing,Marketing,teknisk skrivning
+Blog Writing,Marketing,
+Ghostwriting,Marketing,
+Editing,Marketing,redigering
+Proofreading,Marketing,korrektur
+Social Media,Marketing,sociale medier|some
+Social Media Marketing,Marketing,
+Community Management,Marketing,community manager
+Email Marketing,Marketing,e-mail marketing|nyhedsbrev
+Marketing Automation,Marketing,marketing automation
+Mailchimp,Marketing,
+HubSpot Marketing,Marketing,
+Marketo,Marketing,
+Pardot,Marketing,
+Google Analytics,Marketing,
+Adobe Analytics,Marketing,
+Web Analytics,Marketing,
+Conversion Rate Optimization,Marketing,
+Landing Page Optimization,Marketing,
+Market Research,Research,markedsundersøgelse
+Competitive Analysis,Research,
+Consumer Insights,Research,
+Graphic Design,Design,grafisk design|grafiker
+Visual Design,Design,visuel design
+UI Design,Design,ui|brugerflade
+UX Design,Design,ux|brugeroplevelse
+UI/UX,Design,ui/ux
+User Research,Research,brugerundersøgelse
+Wireframing,Design,wireframe
+Prototyping,Design,prototype
+Interaction Design,Design,
+Information Architecture,Design,
+Design Systems,Design,
+Figma,Design,figma design
+Sketch,Design,
+Adobe XD,Design,
+InVision,Design,
+Zeplin,Design,
+Adobe Photoshop,Design,adobe ps|photoshop
+Adobe Illustrator,Design,illustrator
+Adobe InDesign,Design,indesign|id
+InDesign,Design,
+Adobe Premiere Pro,Video,premiere
+Adobe After Effects,Video,after effects|ae
+Final Cut Pro,Video,final cut|fcp
+DaVinci Resolve,Video,davinci
+Video Editing,Video,videoredigering
+Video Production,Video,videoproduktion
+Motion Graphics,Video,motion design
+Animation,Video,animation
+3D Modeling,3D,3d modellering|3d-modellering
+3D Animation,3D,3d animation
+Blender,3D,
+Maya,3D,
+Cinema 4D,3D,
+ZBrush,3D,
+Canva,Design,
+CorelDRAW,Design,
+Photography,Media,fotografi
+Photo Editing,Media,billedredigering
+Lightroom,Media,
+AutoCAD,Engineering,autocad
+SolidWorks,Engineering,solidworks|solid works
+CATIA,Engineering,
+Inventor,Engineering,inventor
+Fusion 360,Engineering,fusion360
+Revit,Engineering,revit
+SketchUp,Engineering,sketchup
+Rhino,Engineering,rhinoceros|rhino3d
+CNC,Manufacturing,cnc maskine
+CNC Programming,Manufacturing,cnc programmering
+G-Code,Manufacturing,
+CAD,Engineering,cad
+CAM,Manufacturing,cam
+3D Printing,Manufacturing,3d print|additiv fremstilling
+Rapid Prototyping,Manufacturing,
+Manufacturing,Manufacturing,produktion|fremstilling
+Production Planning,Manufacturing,produktionsplanlægning
+Production Management,Manufacturing,produktionsstyring
+Process Improvement,Manufacturing,procesforbedring
+Process Optimization,Manufacturing,procesoptimering
+Quality Assurance,Quality,kvalitetssikring|qa|q/a
+Quality Control,Quality,kvalitetskontrol|qc
+ISO 9001,Quality,
+ISO 14001,Quality,
+ISO 27001,Quality,
+GMP,Quality,
+HACCP,Quality,
+Auditing,Quality,
+Inspection,Quality,
+Testing,Quality,test
+Software Testing,Quality,softwaretest
+Manual Testing,Quality,manuel test
+Automated Testing,Quality,automatiseret test
+Test Automation,Quality,testautomatisering|sdet
+Selenium,Quality,
+Cypress,Quality,
+Playwright,Quality,
+JUnit,Quality,
+NUnit,Quality,
+xUnit,Quality,
+Performance Testing,Quality,
+Load Testing,Quality,
+Security Testing,Quality,
+Penetration Testing,Quality,penetrationstest
+Unit Testing,Quality,enhedstest
+Integration Testing,Quality,integrationstest
+Regression Testing,Quality,regressionstest
+UAT,Quality,
+Logistics,Logistics,logistik
+Supply Chain,Logistics,forsyningskæde
+Supply Chain Management,Logistics,supply chain management|scm
+Demand Planning,Logistics,behovsstyring
+Inventory Management,Logistics,lagerhåndtering
+Warehouse Operations,Logistics,lager|lagerarbejde|lagermedarbejder
+Warehouse Management,Logistics,lagerstyring
+WMS,Logistics,wms
+Order Fulfillment,Logistics,ordrehåndtering
+Shipping,Logistics,forsendelse
+Receiving,Logistics,modtagelse
+Distribution,Logistics,distribution
+Transportation Management,Logistics,transportledelse
+Fleet Management,Logistics,flådestyring
+Route Planning,Logistics,rute planlægning
+Last Mile Delivery,Logistics,
+Freight,Logistics,fragthåndtering
+Import/Export,Logistics,import eksport
+Customs,Logistics,told
+Incoterms,Logistics,
+Forklift Operation,Logistics,truck|truckkort|gaffeltruck
+Pallet Jack,Logistics,palleløfter
+Picker Packer,Logistics,plukker
+Driving,Transport,kørsel
+Commercial Driving,Transport,
+CDL,Transport,
+Truck Driving,Transport,lastbilchauffør
+Delivery,Transport,levering
+Courier,Transport,bud
+Health & Safety,Safety,arbejdsmiljø|hse
+Occupational Health,Safety,ohs
+Safety Training,Safety,sikkerhedstræning
+Risk Assessment,Safety,risikovurdering
+Incident Investigation,Safety,
+OSHA,Safety,
+PPE,Safety,
+Ergonomics,Safety,
+First Aid,Safety,førstehjælp|firstaid
+CPR,Safety,hjerte-lungeredning|hjertelungeredning
+AED,Safety,hjertestarter
+Emergency Response,Safety,nødberedskab
+Fire Safety,Safety,brandsikkerhed
+Nursing,Healthcare,sygepleje
+Registered Nurse,Healthcare,sygeplejerske|rn
+Licensed Practical Nurse,Healthcare,ssu
+Nurse Practitioner,Healthcare,
+Patient Care,Healthcare,patientpleje|patientcare
+Patient Assessment,Healthcare,
+Medication Administration,Healthcare,
+IV Therapy,Healthcare,
+Wound Care,Healthcare,
+Vital Signs,Healthcare,
+Electronic Health Records,Healthcare,epj|ehr
+Epic,Healthcare,
+Cerner,Healthcare,
+Caregiving,Healthcare,omsorg|care giver|caregiver|sosu
+Home Care,Healthcare,hjemmepleje
+Elder Care,Healthcare,ældrepleje
+Disability Support,Healthcare,handicaphjælp
+Personal Care,Healthcare,personlig pleje
+Phlebotomy,Healthcare,blodprøvetagning
+Blood Collection,Healthcare,venepunktur
+Lab Work,Healthcare,laboratoriearbejde
+Medical Billing,Healthcare,pharma billing|med billing
+Medical Coding,Healthcare,medicinsk kodning
+ICD-10,Healthcare,
+CPT Coding,Healthcare,
+Healthcare Administration,Healthcare,sundhedsadministration
+Health Insurance,Healthcare,
+Claims Processing,Healthcare,
+Dental,Healthcare,
+Dental Hygiene,Healthcare,
+Dental Assisting,Healthcare,
+Physical Therapy,Healthcare,
+Occupational Therapy,Healthcare,
+Speech Therapy,Healthcare,
+Radiology,Healthcare,
+X-Ray,Healthcare,
+MRI,Healthcare,
+CT Scan,Healthcare,
+Ultrasound,Healthcare,
+Pharmacy,Healthcare,
+Pharmaceutical,Healthcare,
+Clinical Research,Healthcare,
+Clinical Trials,Healthcare,
+Regulatory Affairs,Healthcare,
+FDA,Healthcare,
+Accounting,Finance,regnskab
+Financial Accounting,Finance,
+Management Accounting,Finance,
+Cost Accounting,Finance,
+Tax Accounting,Finance,
+Bookkeeping,Finance,bogholderi|book-keeping
+Accounts Payable,Finance,kreditor
+Accounts Receivable,Finance,debitor
+General Ledger,Finance,
+Bank Reconciliation,Finance,
+Financial Reporting,Finance,finansiel rapportering
+Financial Statements,Finance,årsregnskab
+GAAP,Finance,
+IFRS,Finance,
+Payroll,Finance,løn
+Payroll Processing,Finance,lønbogføring|payroll administration
+Benefits Administration,Finance,personaleadministration
+QuickBooks,Finance,
+Xero,Finance,
+Sage,Finance,
+SAP FICO,Finance,sap fico
+Oracle Financials,Finance,
+Budgeting,Finance,budget|budgettering
+Forecasting,Finance,forecasting|prognose
+Financial Planning,Finance,finansiel planlægning
+Financial Analysis,Finance,finansiel analyse|financial analysis
+Variance Analysis,Finance,
+Finance,Finance,økonomi
+Corporate Finance,Finance,virksomhedsøkonomi
+Investment Banking,Finance,
+Private Equity,Finance,
+Venture Capital,Finance,
+Mergers & Acquisitions,Finance,m&a
+Due Diligence,Finance,due diligence
+Valuation,Finance,værdiansættelse
+Financial Modeling,Finance,finansiel modellering
+DCF,Finance,
+LBO,Finance,
+Portfolio Management,Finance,
+Asset Management,Finance,
+Wealth Management,Finance,formueforvaltning
+Investment Management,Finance,
+Risk Analysis,Finance,risikoanalyse
+Credit Analysis,Finance,kreditvurdering
+Underwriting,Finance,
+Lending,Finance,lån
+Mortgage,Finance,realkreditlån
+Loan Processing,Finance,
+Collections,Finance,inkasso
+Debt Recovery,Finance,gældsinddrivelse
+Treasury,Finance,
+Cash Management,Finance,
+Banking,Finance,banking
+Retail Banking,Finance,
+Commercial Banking,Finance,
+KYC,Finance,kyc|know your customer
+AML,Finance,hvidvask|anti-money laundering
+Compliance,Legal,compliance
+Regulatory Compliance,Legal,regelsæt
+SOX,Legal,
+GDPR,Legal,gdpr|persondataforordningen
+Data Privacy,Legal,databeskyttelse
+Internal Controls,Legal,intern kontrol
+Legal Research,Legal,juridisk forskning|legal research
+Legal Writing,Legal,juridisk skrivning
+Contract Law,Legal,kontraktret
+Contract Management,Legal,kontraktstyring
+Contract Negotiation,Legal,kontraktforhandling
+Intellectual Property,Legal,ip|immaterielle rettigheder
+Patent,Legal,patent
+Trademark,Legal,varemærke
+Copyright,Legal,ophavsret
+Employment Law,Legal,ansættelsesret
+Corporate Law,Legal,selskabsret
+Litigation,Legal,retssager
+Legal Documentation,Legal,
+Paralegal,Legal,
+Case Management,Legal,sagsbehandling
+E-Discovery,Legal,
+Teaching,Education,undervisning|lærer
+Instruction,Education,instruktion
+Curriculum Development,Education,læseplan
+Lesson Planning,Education,lektionsplanlægning
+Classroom Management,Education,klassestyring|classroom management
+Student Assessment,Education,elevvurdering
+Special Education,Education,specialundervisning|specialpædagogik
+Early Childhood Education,Education,småbørnsundervisning|børnehave
+K-12 Education,Education,folkeskole|gymnasium
+Higher Education,Education,videregående uddannelse
+Adult Education,Education,voksenundervisning
+Online Teaching,Education,onlineundervisning
+E-Learning,Education,e-læring
+Learning Management Systems,Education,lms
+Moodle,Education,
+Canvas,Education,
+Blackboard,Education,
+Tutoring,Education,lektiehjælp|tutor|privatundervisning
+Academic Coaching,Education,
+ESL,Education,esl|engelskundervisning
+TESOL,Education,
+Training,Education,træning
+Corporate Training,Education,virksomhedstræning
+Employee Development,Education,medarbejderudvikling
+Onboarding,HR,onboarding
+Facilitation,Education,facilitering
+Workshop Facilitation,Education,workshopfacilitering
+Instructional Design,Education,instruktionsdesign
+Hospitality,Hospitality,hospitality
+Hotel Management,Hospitality,hotel|hotelledelse
+Front Desk,Hospitality,reception
+Concierge,Hospitality,concierge
+Guest Relations,Hospitality,gæsterelationer
+Guest Services,Hospitality,gæsteservice
+Reservations,Hospitality,reservationer
+Property Management,Hospitality,ejendomsadministration
+Food & Beverage,Hospitality,f&b|mad og drikke
+Food Preparation,Hospitality,food prep
+Cooking,Hospitality,madlavning
+Culinary,Hospitality,kok|chef|køkkenchef
+Culinary Arts,Hospitality,
+Baking,Hospitality,bagning
+Pastry,Hospitality,konditor
+Menu Planning,Hospitality,menuplanlægning
+Food Safety,Hospitality,fødevaresikkerhed
+ServSafe,Hospitality,
+Kitchen Management,Hospitality,køkkenstyring
+Restaurant Management,Hospitality,restaurant|restaurantledelse
+Catering,Hospitality,catering
+Banquet,Hospitality,
+Barista,Hospitality,barista
+Coffee,Hospitality,kaffe
+Bartending,Hospitality,bartender
+Mixology,Hospitality,mixologi
+Wine,Hospitality,vin
+Sommelier,Hospitality,sommelier
+Serving,Hospitality,tjener
+Table Service,Hospitality,servering
+Fine Dining,Hospitality,finedining
+Housekeeping,Hospitality,housekeeping|house keeper
+Room Attendant,Hospitality,stuepige
+Laundry,Hospitality,vaskeri
+Event Planning,Events,arrangement|eventplanlægning|events
+Event Management,Events,eventstyring
+Event Coordination,Events,
+Wedding Planning,Events,bryllupsplanlægning
+Conference Planning,Events,konference
+Trade Shows,Events,messer
+Exhibitions,Events,udstillinger
+Venue Management,Events,
+Scheduling,Administrative,planlægning|scheduler
+Calendar Management,Administrative,kalender
+Appointment Setting,Administrative,aftaler
+Administrative Support,Administrative,administration|admin
+Administrative Assistant,Administrative,administrativ assistent|sekretær
+Executive Assistant,Administrative,direktionsassistent|ea
+Office Management,Administrative,kontorstyring
+Office Administration,Administrative,kontor|kontoradministration
+Reception,Administrative,receptionist
+Receptionist,Administrative,
+Front Office,Administrative,
+Data Management,Administrative,
+Filing,Administrative,arkivering
+Record Keeping,Administrative,
+Document Management,Administrative,dokumentstyring
+Travel Arrangements,Administrative,rejsearrangement
+Travel Coordination,Administrative,
+Expense Reporting,Administrative,udgiftsrapportering
+Meeting Coordination,Administrative,mødekoordinering
+Minutes Taking,Administrative,referatskrivning
+Typing,Administrative,maskinskrivning
+Transcription,Administrative,transskription
+Dictation,Administrative,
+Welding,Trades,svejser|svejsning
+MIG Welding,Trades,mig svejsning
+TIG Welding,Trades,tig svejsning
+Arc Welding,Trades,buesvejsning
+Spot Welding,Trades,
+Brazing,Trades,
+Soldering,Trades,lodning
+Metal Fabrication,Trades,metalbearbejdning
+Sheet Metal,Trades,pladesmede
+Electrical,Trades,elektriker
+Electrical Wiring,Trades,
+Electrical Installation,Trades,el-installation
+Electrical Maintenance,Trades,el-vedligeholdelse
+PLC,Trades,plc|plc programmering
+SCADA,Trades,scada
+Instrumentation,Trades,
+Motor Controls,Trades,
+Circuitry,Trades,
+Troubleshooting,Trades,fejlfinding
+Plumbing,Trades,vvs|vvs-installatør
+Pipefitting,Trades,rørlægger
+HVAC,Trades,hvac|klima
+Refrigeration,Trades,køleteknik
+Air Conditioning,Trades,aircondition
+Heating,Trades,varme
+Ventilation,Trades,ventilation
+Carpentry,Trades,tømrer
+Woodworking,Trades,snedker|træarbejde
+Framing,Trades,
+Finishing,Trades,
+Cabinetry,Trades,skabssnedker
+Flooring,Trades,gulvlægger
+Roofing,Trades,tagdækker
+Masonry,Trades,murer
+Bricklaying,Trades,murerarbejde
+Concrete,Trades,betonarbejde
+Drywall,Trades,gipsarbejde
+Painting,Trades,maler|malerarbejde
+Decorating,Trades,dekoration
+Plastering,Trades,pudsning
+Tiling,Trades,fliser|flisemontør
+Glazing,Trades,glarmester
+Insulation,Trades,isolering
+Cleaning,Facilities,rengøring|cleaning
+Commercial Cleaning,Facilities,erhvervsrengøring
+Residential Cleaning,Facilities,privat rengøring
+Deep Cleaning,Facilities,hovedrengøring
+Sanitation,Facilities,sanitet
+Janitorial,Facilities,rengøringsassistent
+Grounds Maintenance,Facilities,
+Landscaping,Facilities,anlægsgartner
+Gardening,Facilities,gartner|havearbejde
+Horticulture,Facilities,
+Lawn Care,Facilities,græspleje
+Tree Care,Facilities,træpleje
+Irrigation,Facilities,vanding
+Pest Control,Facilities,skadedyrsbekæmpelse
+Pool Maintenance,Facilities,poolvedligeholdelse
+Maintenance,Facilities,vedligeholdelse
+Building Maintenance,Facilities,bygningsvedligeholdelse|pedel|ejendomsservice
+Facility Management,Facilities,facilitystyring
+Preventive Maintenance,Facilities,forebyggende vedligeholdelse
+Equipment Maintenance,Facilities,udstyrvedligeholdelse
+Repair,Facilities,reparation
+Handyman,Facilities,handyman|altmuligmand
+Chauffeur,Transport,chauffør
+Private Driver,Transport,privatchauffør
+Security,Security,sikkerhed
+Security Guard,Security,sikkerhedsvagt|vagt
+Surveillance,Security,overvågning
+CCTV,Security,
+Access Control,Security,adgangskontrol
+Loss Prevention,Security,
+Crowd Control,Security,
+Executive Protection,Security,
+Cybersecurity,IT Security,cybersikkerhed
+Information Security,IT Security,it-sikkerhed
+Network Security,IT Security,netværkssikkerhed
+Application Security,IT Security,applikationssikkerhed
+Cloud Security,IT Security,cloudsikkerhed
+Endpoint Security,IT Security,
+SIEM,IT Security,siem
+SOC,IT Security,soc
+Incident Response,IT Security,incident response|hændelseshåndtering
+Threat Intelligence,IT Security,trusselsintelligens
+Vulnerability Management,IT Security,sårbarhedsstyring
+Ethical Hacking,IT Security,etisk hacking
+Cryptography,IT Security,kryptering
+Identity Management,IT Security,identitetsstyring
+IAM,IT Security,iam
+Zero Trust,IT Security,
+Translation,Language,oversættelse|oversætter
+Interpretation,Language,tolkning|tolk
+Localization,Language,lokalisering
+Transcreation,Language,
+Subtitling,Language,undertekster
+Dubbing,Language,
+Language Services,Language,sprogservice
+Danish,Language,dansk
+English,Language,engelsk
+German,Language,tysk
+French,Language,fransk
+Spanish,Language,spansk
+Swedish,Language,svensk
+Norwegian,Language,norsk
+Finnish,Language,finsk
+Dutch,Language,hollandsk
+Italian,Language,italiensk
+Portuguese,Language,portugisisk
+Polish,Language,polsk
+Russian,Language,russisk
+Arabic,Language,arabisk
+Chinese,Language,kinesisk
+Japanese,Language,japansk
+Korean,Language,koreansk
+Hindi,Language,
+Copy Editing,Writing,korrekturlæsning
+Research,Research,research|forskning
+Academic Research,Research,akademisk forskning
+Qualitative Research,Research,kvalitativ forskning
+Quantitative Research,Research,kvantitativ forskning
+Survey Design,Research,spørgeskemaer
+Interviews,Research,interviews
+Focus Groups,Research,fokusgrupper
+Procurement,Procurement,indkøb
+Purchasing,Procurement,indkøber
+Sourcing,Procurement,sourcing
+Strategic Sourcing,Procurement,
+Vendor Management,Procurement,leverandørstyring
+Supplier Relations,Procurement,leverandørrelationer
+Contract Administration,Procurement,
+RFP,Procurement,rfp
+RFQ,Procurement,rfq
+Negotiation Skills,Procurement,
+Cost Reduction,Procurement,omkostningsreduktion
+Human Resources,HR,hr|personale|menneskelige ressourcer
+HR,HR,
+Talent Acquisition,HR,talenterhvervelse
+Recruiting,HR,rekruttering
+Sourcing Candidates,HR,kandidatsøgning
+Interviewing,HR,interviewteknik
+Hiring,HR,ansættelse
+Employee Relations,HR,medarbejderrelationer
+Performance Management,HR,performance management|præstationsstyring
+Compensation,HR,kompensation
+Benefits,HR,benefits|personalegoder
+HRIS,HR,hris
+Workday,HR,workday
+ADP,HR,adp
+BambooHR,HR,bamboohr
+SAP SuccessFactors,HR,successfactors
+Employee Engagement,HR,medarbejderengagement
+Retention,HR,fastholdelse
+Diversity & Inclusion,HR,mangfoldighed|d&i
+Labor Relations,HR,arbejdsmarkedsrelationer
+Conflict Resolution,HR,konfliktløsning
+Mediation,HR,mægling
+Coaching,Soft Skills,coaching
+Mentoring,Soft Skills,mentoring|mentorordning
+Leadership,Soft Skills,ledelse|lederskab
+Team Leadership,Soft Skills,teamledelse
+People Management,Soft Skills,personaleledelse
+Team Building,Soft Skills,teambuilding
+Delegation,Soft Skills,delegering
+Decision Making,Soft Skills,beslutningstagning
+Strategic Thinking,Soft Skills,strategisk tænkning
+Critical Thinking,Soft Skills,kritisk tænkning
+Problem Solving,Soft Skills,problemløsning
+Analytical Skills,Soft Skills,analytiske evner|analytisk
+Attention to Detail,Soft Skills,detaljeorienteret|grundighed
+Time Management,Soft Skills,tidsstyring
+Prioritization,Soft Skills,prioritering
+Multitasking,Soft Skills,multitasking
+Organization,Soft Skills,organisation|organisationsevne
+Planning,Soft Skills,
+Goal Setting,Soft Skills,målsætning
+Communication,Soft Skills,kommunikation
+Written Communication,Soft Skills,skriftlig kommunikation
+Verbal Communication,Soft Skills,mundtlig kommunikation
+Interpersonal Skills,Soft Skills,interpersonelle evner
+Collaboration,Soft Skills,samarbejde
+Teamwork,Soft Skills,teamwork
+Cross-functional Collaboration,Soft Skills,tværfagligt samarbejde
+Remote Work,Soft Skills,fjernarbejde|hjemmearbejde
+Virtual Collaboration,Soft Skills,virtuelt samarbejde
+Adaptability,Soft Skills,omstillingsparathed
+Flexibility,Soft Skills,fleksibilitet
+Resilience,Soft Skills,robusthed
+Stress Management,Soft Skills,stresshåndtering
+Emotional Intelligence,Soft Skills,følelsesmæssig intelligens|eq
+Empathy,Soft Skills,empati
+Active Listening,Soft Skills,aktiv lytning
+Customer Focus,Soft Skills,kundefokus
+Service Orientation,Soft Skills,serviceorienteret
+Initiative,Soft Skills,initiativ
+Self-Motivation,Soft Skills,selvmotivation
+Accountability,Soft Skills,ansvarlighed
+Integrity,Soft Skills,integritet
+Ethics,Soft Skills,etik
+Professionalism,Soft Skills,professionalisme
+Work Ethic,Soft Skills,arbejdsmoral
+Reliability,Soft Skills,pålidelighed
+Punctuality,Soft Skills,punktlighed

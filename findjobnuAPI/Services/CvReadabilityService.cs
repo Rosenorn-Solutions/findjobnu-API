@@ -21,11 +21,13 @@ public class CvService : ICvService
     private readonly FindjobnuContext _db;
     private readonly IProfileService _profileService;
     private readonly ILogger<CvService> _logger;
+    private readonly ISkillTaxonomy _skillTaxonomy;
 
-    public CvService(FindjobnuContext db, IProfileService profileService, ILogger<CvService> logger)
+    public CvService(FindjobnuContext db, IProfileService profileService, ISkillTaxonomy skillTaxonomy, ILogger<CvService> logger)
     {
         _db = db;
         _profileService = profileService;
+        _skillTaxonomy = skillTaxonomy;
         _logger = logger;
     }
 
@@ -207,7 +209,7 @@ public class CvService : ICvService
         }
     }
 
-    private static CvExtractionResult ExtractProfileData(string text)
+    private CvExtractionResult ExtractProfileData(string text)
     {
         if (string.IsNullOrWhiteSpace(text))
         {
@@ -329,7 +331,7 @@ public class CvService : ICvService
         return string.Join('\n', content);
     }
 
-    private static List<Skill> ParseSkills(string sectionText)
+    private List<Skill> ParseSkills(string sectionText)
     {
         var skills = new List<Skill>();
         if (string.IsNullOrWhiteSpace(sectionText)) return skills;
@@ -338,13 +340,27 @@ public class CvService : ICvService
             .Split(['\n', ',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Where(t => t.Length <= 80);
 
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         foreach (var token in tokens)
         {
-            skills.Add(new Skill
+            var cleaned = token.Trim();
+            if (string.IsNullOrWhiteSpace(cleaned)) continue;
+            if (cleaned.StartsWith("%", StringComparison.Ordinal)) continue;
+            if (!cleaned.Any(char.IsLetterOrDigit)) continue;
+
+            var name = _skillTaxonomy.TryNormalize(cleaned, out var canonical)
+                ? canonical
+                : cleaned;
+
+            if (seen.Add(name))
             {
-                Name = token,
-                Proficiency = SkillProficiency.Intermediate
-            });
+                skills.Add(new Skill
+                {
+                    Name = name,
+                    Proficiency = SkillProficiency.Intermediate
+                });
+            }
         }
 
         return skills;

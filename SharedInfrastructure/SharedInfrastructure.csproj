@@ -14,5 +14,6 @@
 
   <ItemGroup>
     <EmbeddedResource Include="..\postal_codes_da.csv" Link="Data\postal_codes_da.csv" />
+    <EmbeddedResource Include="..\skills_taxonomy.csv" Link="Data\skills_taxonomy.csv" />
   </ItemGroup>
 </Project>

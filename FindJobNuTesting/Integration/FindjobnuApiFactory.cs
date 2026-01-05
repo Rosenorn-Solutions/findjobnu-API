@@ -30,27 +30,25 @@ namespace FindjobnuTesting.Integration
             builder.ConfigureServices(services =>
             {
                 // Remove existing DbContext registrations for FindjobnuContext
-                var dbContextDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(DbContextOptions<FindjobnuContext>));
-                if (dbContextDescriptor != null)
+                var descriptorsToRemove = services
+                    .Where(d => d.ServiceType == typeof(DbContextOptions<FindjobnuContext>) ||
+                                d.ServiceType == typeof(FindjobnuContext) ||
+                                d.ServiceType == typeof(IDbContextFactory<FindjobnuContext>))
+                    .ToList();
+                foreach (var descriptor in descriptorsToRemove)
                 {
-                    services.Remove(dbContextDescriptor);
-                }
-                var contextDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(FindjobnuContext));
-                if (contextDescriptor != null)
-                {
-                    services.Remove(contextDescriptor);
-                }
-                var factoryDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(IDbContextFactory<FindjobnuContext>));
-                if (factoryDescriptor != null)
-                {
-                    services.Remove(factoryDescriptor);
+                    services.Remove(descriptor);
                 }
 
-                // Register a single InMemory provider for tests
-                services.AddDbContext<FindjobnuContext>(options =>
+                // Register DbContextFactory for in-memory tests
+                services.AddDbContextFactory<FindjobnuContext>(options =>
                 {
                     options.UseInMemoryDatabase("IntegrationTestsDb");
                 });
+
+                // Register scoped DbContext from the factory
+                services.AddScoped(sp =>
+                    sp.GetRequiredService<IDbContextFactory<FindjobnuContext>>().CreateDbContext());
             });
         }
     }

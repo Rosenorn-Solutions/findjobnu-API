@@ -14,6 +14,7 @@ using Serilog;
 using Serilog.Events;
 using SharedInfrastructure.Cities;
 using SharedInfrastructure.Health;
+using SharedInfrastructure.Skills;
 using System.IO.Compression;
 using System.Text;
 
@@ -61,14 +62,22 @@ namespace FindjobnuService
             // Use InMemory for Testing, otherwise SQL Server
             if (builder.Environment.IsEnvironment("Testing"))
             {
-                builder.Services.AddDbContext<FindjobnuContext>(options =>
+                // For testing, use AddDbContextFactory which also allows scoped DbContext resolution
+                builder.Services.AddDbContextFactory<FindjobnuContext>(options =>
                     options.UseInMemoryDatabase("IntegrationTestsDb"));
+                // Also register the DbContext itself for scoped injection
+                builder.Services.AddScoped(sp =>
+                    sp.GetRequiredService<IDbContextFactory<FindjobnuContext>>().CreateDbContext());
             }
             else
             {
                 var connectionString = builder.Configuration.GetConnectionString("FindjobnuConnection") ?? throw new InvalidConfigurationException("Connection string 'FindjobnuConnection' not found.");
-                builder.Services.AddDbContext<FindjobnuContext>(options =>
+                // Use pooled factory for production - registers both factory and pooled context
+                builder.Services.AddPooledDbContextFactory<FindjobnuContext>(options =>
                     options.UseSqlServer(connectionString));
+                // Also register the DbContext itself for scoped injection
+                builder.Services.AddScoped(sp =>
+                    sp.GetRequiredService<IDbContextFactory<FindjobnuContext>>().CreateDbContext());
             }
 
             var jwtSettings = builder.Configuration.GetSection("JwtSettings");
@@ -106,6 +115,8 @@ namespace FindjobnuService
 
             builder.Services.AddAuthorization();
             builder.Services.AddHttpClient();
+            builder.Services.AddSingleton<ISkillTaxonomy, SkillTaxonomy>();
+
             builder.Services.AddScoped<IProfileService, ProfileService>();
             builder.Services.AddScoped<IJobIndexPostsService, JobIndexPostsService>();
             builder.Services.AddScoped<INewsletterService, NewsletterService>();
@@ -177,6 +188,14 @@ namespace FindjobnuService
             var app = builder.Build();
 
             app.Services.SeedCitiesAsync<FindjobnuContext>().GetAwaiter().GetResult();
+            app.Services.SeedSkillsAsync<FindjobnuContext>().GetAwaiter().GetResult();
+
+            // Pre-warm skill taxonomy cache
+            using (var scope = app.Services.CreateScope())
+            {
+                var taxonomy = scope.ServiceProvider.GetRequiredService<ISkillTaxonomy>();
+                taxonomy.RefreshCacheAsync().GetAwaiter().GetResult();
+            }
 
             app.UseForwardedHeaders(new ForwardedHeadersOptions
             {
