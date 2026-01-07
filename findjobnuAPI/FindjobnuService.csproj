@@ -31,6 +31,7 @@
     <PackageReference Include="prometheus-net.AspNetCore" Version="8.2.1" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="MassTransit" Version="9.0.0" />
     <ProjectReference Include="..\SharedInfrastructure\SharedInfrastructure.csproj" />
   </ItemGroup>
 
