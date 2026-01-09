@@ -26,6 +26,16 @@ namespace FindjobnuService.Services
             if (profile == null) return null;
             if (profile.BasicInfo == null) profile.BasicInfo = new BasicInfo();
 
+            // Fetch categories for JobAgent if it exists and has preferred category IDs
+            IEnumerable<Category>? categories = null;
+            if (profile.JobAgent?.PreferredCategoryIds != null && profile.JobAgent.PreferredCategoryIds.Any())
+            {
+                categories = await _db.Categories
+                    .Where(c => profile.JobAgent.PreferredCategoryIds.Contains(c.CategoryID))
+                    .AsNoTracking()
+                    .ToListAsync();
+            }
+
             return new ProfileDto
             {
                 Id = profile.Id,
@@ -35,7 +45,7 @@ namespace FindjobnuService.Services
                 SavedJobPosts = profile.SavedJobPosts,
                 Keywords = profile.Keywords,
                 HasJobAgent = profile.HasJobAgent,
-                JobAgent = JobAgentMapper.ToDto(profile.JobAgent),
+                JobAgent = JobAgentMapper.ToDto(profile.JobAgent, categories),
                 BasicInfo = new BasicInfoDto
                 {
                     FirstName = profile.BasicInfo.FirstName,

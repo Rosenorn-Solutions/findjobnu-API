@@ -22,7 +22,11 @@ namespace FindjobnuService.Endpoints
                 if (profile == null || profile.Id != profileId)
                     return TypedResults.Forbid();
                 var agent = await service.GetByProfileIdAsync(profileId);
-                var dto = JobAgentMapper.ToDto(agent);
+                if (agent == null)
+                    return TypedResults.NotFound();
+                
+                var categories = await service.GetCategoriesByIdsAsync(agent.PreferredCategoryIds ?? []);
+                var dto = JobAgentMapper.ToDto(agent, categories);
                 return dto != null ? TypedResults.Ok(dto) : TypedResults.NotFound();
             }).WithName("GetJobAgent");
 
@@ -41,7 +45,9 @@ namespace FindjobnuService.Endpoints
                     request.PreferredLocations,
                     request.PreferredCategoryIds,
                     request.IncludeKeywords);
-                var dto = JobAgentMapper.ToDto(agent);
+                
+                var categories = await service.GetCategoriesByIdsAsync(agent.PreferredCategoryIds ?? []);
+                var dto = JobAgentMapper.ToDto(agent, categories);
                 return TypedResults.Ok(dto!);
             }).WithName("CreateOrUpdateJobAgent");
 

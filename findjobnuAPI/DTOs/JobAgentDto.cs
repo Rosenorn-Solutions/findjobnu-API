@@ -14,6 +14,7 @@ namespace FindjobnuService.DTOs
         public DateTime? UpdatedAt { get; set; }
         public List<string> PreferredLocations { get; set; } = new();
         public List<int> PreferredCategoryIds { get; set; } = new();
+        public List<string> PreferredCategoryNames { get; set; } = new();
         public List<string> IncludeKeywords { get; set; } = new();
     }
 }

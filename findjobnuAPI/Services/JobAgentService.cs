@@ -73,6 +73,17 @@ namespace FindjobnuService.Services
             return await _db.JobAgents.AsNoTracking().FirstOrDefaultAsync(x => x.ProfileId == profileId);
         }
 
+        public async Task<IEnumerable<Category>> GetCategoriesByIdsAsync(IEnumerable<int> categoryIds)
+        {
+            if (categoryIds == null || !categoryIds.Any())
+                return Enumerable.Empty<Category>();
+
+            return await _db.Categories
+                .Where(c => categoryIds.Contains(c.CategoryID))
+                .AsNoTracking()
+                .ToListAsync();
+        }
+
         public async Task<string?> GetOrCreateUnsubscribeTokenAsync(int profileId)
         {
             var agent = await _db.JobAgents.FirstOrDefaultAsync(x => x.ProfileId == profileId);

@@ -14,5 +14,6 @@ namespace FindjobnuService.Services
         Task<string?> GetOrCreateUnsubscribeTokenAsync(int profileId);
         Task<bool> UnsubscribeByTokenAsync(string token);
         Task<JobAgent?> GetByProfileIdAsync(int profileId);
+        Task<IEnumerable<Category>> GetCategoriesByIdsAsync(IEnumerable<int> categoryIds);
     }
 }
