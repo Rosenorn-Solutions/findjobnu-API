@@ -1,4 +1,4 @@
-ï»¿using FindjobnuService.DTOs.Requests;
+using FindjobnuService.DTOs.Requests;
 using FindjobnuService.DTOs.Responses;
 using FindjobnuService.Models;
 using FindjobnuService.Repositories.Context;
@@ -49,10 +49,11 @@ namespace FindjobnuService.Services
             if (page < 1) page = 1;
             if (pageSize < 1) pageSize = 20;
 
-            // Normalize and extract location tokens
+            // Normalize locations: take only the first word (city name) from each location
+            // "København K" -> "København", "Aarhus C" -> "Aarhus"
             var locationTokens = locations?
                 .Where(l => !string.IsNullOrWhiteSpace(l))
-                .SelectMany(l => l.Split(new[] { ' ', ',', '-' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                .Select(l => l.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault())
                 .Where(token => !string.IsNullOrWhiteSpace(token))
                 .Distinct()
                 .ToList();
@@ -115,7 +116,7 @@ namespace FindjobnuService.Services
                     for (int i = 0; i < locationTokens.Count; i++)
                     {
                         var paramName = $"@location{i}";
-                        locationConditions.Add($"j.JobLocation LIKE '%' + {paramName} + '%'" );
+                        locationConditions.Add($"j.JobLocation LIKE '%' + {paramName} + '%'");
                         parameters.Add(new SqlParameter(paramName, locationTokens[i]));
                     }
                     whereConditions.Add($"({string.Join(" OR ", locationConditions)})");
@@ -138,20 +139,25 @@ namespace FindjobnuService.Services
                     ? "WHERE " + string.Join(" AND ", whereConditions) 
                     : "";
 
+                // Use UNION instead of UNION ALL to avoid duplicates, GROUP BY for best rank
                 var baseSql = $@"
 SELECT j.*
 FROM (
-    SELECT j.JobID, t.[RANK]
-    FROM CONTAINSTABLE(dbo.JobIndexPostingsExtended, (JobTitle, JobDescription, CompanyName, JobLocation), @ftQuery) t
-    JOIN dbo.JobIndexPostingsExtended j ON j.JobID = t.[KEY]
-    UNION ALL
-    SELECT j.JobID, tk.[RANK]
-    FROM CONTAINSTABLE(dbo.JobKeywords, Keyword, @ftQuery) tk
-    JOIN dbo.JobKeywords k ON k.KeywordID = tk.[KEY]
-    JOIN dbo.JobIndexPostingsExtended j ON j.JobID = k.JobID
+    SELECT j.JobID, MAX(r.[RANK]) AS [RANK]
+    FROM (
+        SELECT t.[KEY] AS JobID, t.[RANK]
+        FROM CONTAINSTABLE(dbo.JobIndexPostingsExtended, (JobTitle, JobDescription, CompanyName, JobLocation), @ftQuery) t
+        UNION
+        SELECT j.JobID, tk.[RANK]
+        FROM CONTAINSTABLE(dbo.JobKeywords, Keyword, @ftQuery) tk
+        JOIN dbo.JobKeywords k ON k.KeywordID = tk.[KEY]
+        JOIN dbo.JobIndexPostingsExtended j ON j.JobID = k.JobID
+    ) r
+    JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
+    {whereClause}
+    GROUP BY j.JobID
 ) r
 JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
-{whereClause}
 ORDER BY r.[RANK] DESC, j.Published DESC
 OFFSET @off ROWS FETCH NEXT @take ROWS ONLY";
 
@@ -161,14 +167,14 @@ OFFSET @off ROWS FETCH NEXT @take ROWS ONLY";
                     .AsNoTracking()
                     .ToListAsync();
 
+                // Simplified count query using COUNT(DISTINCT)
                 var countSql = $@"
-SELECT j.JobID
+SELECT COUNT(DISTINCT r.JobID)
 FROM (
-    SELECT j.JobID, t.[RANK]
+    SELECT t.[KEY] AS JobID
     FROM CONTAINSTABLE(dbo.JobIndexPostingsExtended, (JobTitle, JobDescription, CompanyName, JobLocation), @ftQuery) t
-    JOIN dbo.JobIndexPostingsExtended j ON j.JobID = t.[KEY]
-    UNION ALL
-    SELECT j.JobID, tk.[RANK]
+    UNION
+    SELECT j.JobID
     FROM CONTAINSTABLE(dbo.JobKeywords, Keyword, @ftQuery) tk
     JOIN dbo.JobKeywords k ON k.KeywordID = tk.[KEY]
     JOIN dbo.JobIndexPostingsExtended j ON j.JobID = k.JobID
@@ -180,10 +186,9 @@ JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
                     .Select(p => new SqlParameter(p.ParameterName, p.Value))
                     .ToArray();
 
-                var totalCount = await _db.JobIndexPosts
-                    .FromSqlRaw(countSql, countParams)
-                    .Select(j => j.JobID)
-                    .CountAsync();
+                var totalCount = await _db.Database
+                    .SqlQueryRaw<int>(countSql, countParams)
+                    .FirstOrDefaultAsync();
 
                 result = new PagedList<JobIndexPosts>(totalCount, pageSize, page, items);
             }
@@ -205,12 +210,12 @@ JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
                     filteredJobs = filteredJobs.Where(j => j.Published <= postedBefore.Value);
                 }
 
-                // Multiple locations with OR logic
+                // Multiple locations with OR logic - match city name prefix
                 if (locationTokens != null && locationTokens.Count > 0)
                 {
                     filteredJobs = filteredJobs.Where(j => 
                         j.JobLocation != null && 
-                        locationTokens.Any(loc => j.JobLocation.IndexOf(loc, StringComparison.OrdinalIgnoreCase) >= 0));
+                        locationTokens.Any(loc => j.JobLocation.IndexOf(loc!, StringComparison.OrdinalIgnoreCase) >= 0));
                 }
 
                 // Multiple categories with OR logic
@@ -412,10 +417,11 @@ JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
             if (keywords.Count == 0)
                 return new PagedList<JobIndexPosts>(0, pageSize, page, []);
 
-            // Extract and normalize filter parameters
+            // Normalize locations: take only the first word (city name) from each location
+            // "København K" -> "København", "Aarhus C" -> "Aarhus"
             var locationTokens = request?.Locations?
                 .Where(l => !string.IsNullOrWhiteSpace(l))
-                .SelectMany(l => l.Split(new[] { ' ', ',', '-' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                .Select(l => l.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault())
                 .Where(token => !string.IsNullOrWhiteSpace(token))
                 .Distinct()
                 .ToList();
@@ -444,7 +450,7 @@ JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
         private async Task<PagedList<JobIndexPosts>> BuildRecommendationsSqlServer(
             List<string> keywords, 
             RecommendedJobsRequest? request, 
-            List<string>? locationTokens,
+            List<string?>? locationTokens,
             List<string>? searchTerms,
             List<int>? categoryIds, 
             int page, 
@@ -481,7 +487,7 @@ JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
                 for (int i = 0; i < locationTokens.Count; i++)
                 {
                     var paramName = $"@location{i}";
-                    locationConditions.Add($"j.JobLocation LIKE '%' + {paramName} + '%'" );
+                    locationConditions.Add($"j.JobLocation LIKE '%' + {paramName} + '%'");
                     parameters.Add(new SqlParameter(paramName, locationTokens[i]));
                 }
                 whereConditions.Add($"({string.Join(" OR ", locationConditions)})");
@@ -517,20 +523,25 @@ JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
                 ? "WHERE " + string.Join(" AND ", whereConditions) 
                 : "";
 
+            // Use UNION instead of UNION ALL to avoid duplicates, GROUP BY for best rank
             var baseSqlRec = $@"
 SELECT j.*
 FROM (
-    SELECT j.JobID, t.[RANK]
-    FROM CONTAINSTABLE(dbo.JobIndexPostingsExtended, (JobTitle, JobDescription, CompanyName, JobLocation), @ftQuery) t
-    JOIN dbo.JobIndexPostingsExtended j ON j.JobID = t.[KEY]
-    UNION ALL
-    SELECT j.JobID, tk.[RANK]
-    FROM CONTAINSTABLE(dbo.JobKeywords, Keyword, @ftQuery) tk
-    JOIN dbo.JobKeywords k ON k.KeywordID = tk.[KEY]
-    JOIN dbo.JobIndexPostingsExtended j ON j.JobID = k.JobID
+    SELECT j.JobID, MAX(r.[RANK]) AS [RANK]
+    FROM (
+        SELECT t.[KEY] AS JobID, t.[RANK]
+        FROM CONTAINSTABLE(dbo.JobIndexPostingsExtended, (JobTitle, JobDescription, CompanyName, JobLocation), @ftQuery) t
+        UNION
+        SELECT j.JobID, tk.[RANK]
+        FROM CONTAINSTABLE(dbo.JobKeywords, Keyword, @ftQuery) tk
+        JOIN dbo.JobKeywords k ON k.KeywordID = tk.[KEY]
+        JOIN dbo.JobIndexPostingsExtended j ON j.JobID = k.JobID
+    ) r
+    JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
+    {whereClause}
+    GROUP BY j.JobID
 ) r
 JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
-{whereClause}
 ORDER BY r.[RANK] DESC, j.Published DESC
 OFFSET @off ROWS FETCH NEXT @take ROWS ONLY";
 
@@ -540,32 +551,30 @@ OFFSET @off ROWS FETCH NEXT @take ROWS ONLY";
                 .AsNoTracking()
                 .ToListAsync();
 
-            // Count query without pagination
-            var countParams = parameters.Where(p => p.ParameterName != "@off" && p.ParameterName != "@take").ToList();
-
-            var countResult = await _db.JobIndexPosts
-                .FromSqlRaw($@"
-SELECT j.*
+            // Simplified count query using COUNT(DISTINCT)
+            var countSql = $@"
+SELECT COUNT(DISTINCT r.JobID)
 FROM (
-    SELECT DISTINCT j.JobID
-    FROM (
-        SELECT j.JobID
-        FROM CONTAINSTABLE(dbo.JobIndexPostingsExtended, (JobTitle, JobDescription, CompanyName, JobLocation), @ftQuery) t
-        JOIN dbo.JobIndexPostingsExtended j ON j.JobID = t.[KEY]
-        UNION
-        SELECT j.JobID
-        FROM CONTAINSTABLE(dbo.JobKeywords, Keyword, @ftQuery) tk
-        JOIN dbo.JobKeywords k ON k.KeywordID = tk.[KEY]
-        JOIN dbo.JobIndexPostingsExtended j ON j.JobID = k.JobID
-    ) r
-    JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
-    {whereClause}
-) ids
-JOIN dbo.JobIndexPostingsExtended j ON j.JobID = ids.JobID", 
-                    countParams.Select(p => new SqlParameter(p.ParameterName, p.Value)).ToArray())
-                .CountAsync();
+    SELECT t.[KEY] AS JobID
+    FROM CONTAINSTABLE(dbo.JobIndexPostingsExtended, (JobTitle, JobDescription, CompanyName, JobLocation), @ftQuery) t
+    UNION
+    SELECT j.JobID
+    FROM CONTAINSTABLE(dbo.JobKeywords, Keyword, @ftQuery) tk
+    JOIN dbo.JobKeywords k ON k.KeywordID = tk.[KEY]
+    JOIN dbo.JobIndexPostingsExtended j ON j.JobID = k.JobID
+) r
+JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
+{whereClause}";
 
-            return new PagedList<JobIndexPosts>(countResult, pageSize, page, items);
+            var countParams = parameters.Where(p => p.ParameterName != "@off" && p.ParameterName != "@take")
+                .Select(p => new SqlParameter(p.ParameterName, p.Value))
+                .ToArray();
+
+            var totalCount = await _db.Database
+                .SqlQueryRaw<int>(countSql, countParams)
+                .FirstOrDefaultAsync();
+
+            return new PagedList<JobIndexPosts>(totalCount, pageSize, page, items);
         }
 
         private async Task<PagedList<JobIndexPosts>> BuildRecommendationsInMemory(
