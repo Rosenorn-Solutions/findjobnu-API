@@ -181,7 +181,7 @@ OFFSET @off ROWS FETCH NEXT @take ROWS ONLY";
                     // Re-query to get the count since EF Core doesn't map TotalCount directly
                     // Use a simpler count query with TOP_N_BY_RANK optimization
                     var countSql = $@"
-SELECT COUNT(*)
+SELECT COUNT(*) AS Value
 FROM (
     SELECT r.JobID
     FROM (
@@ -568,9 +568,9 @@ OFFSET @off ROWS FETCH NEXT @take ROWS ONLY";
                 .AsNoTracking()
                 .ToListAsync();
 
-            // Simplified count query using COUNT(DISTINCT)
+            // Simplified count query using COUNT(DISTINCT) with Value alias for SqlQueryRaw<int>
             var countSql = $@"
-SELECT COUNT(DISTINCT r.JobID)
+SELECT COUNT(DISTINCT r.JobID) AS Value
 FROM (
     SELECT t.[KEY] AS JobID
     FROM CONTAINSTABLE(dbo.JobIndexPostingsExtended, (JobTitle, JobDescription, CompanyName, JobLocation), @ftQuery, 2000) t
