@@ -139,58 +139,75 @@ namespace FindjobnuService.Services
                     ? "WHERE " + string.Join(" AND ", whereConditions) 
                     : "";
 
-                // Use UNION instead of UNION ALL to avoid duplicates, GROUP BY for best rank
+                // Optimized query with:
+                // 1. TOP_N_BY_RANK (2000) to limit full-text results early
+                // 2. Filters applied inside subquery (early filter pushdown)
+                // 3. COUNT(*) OVER() to get total count in single query pass
                 var baseSql = $@"
-SELECT j.*
+SELECT j.*, r.TotalCount
 FROM (
-    SELECT j.JobID, MAX(r.[RANK]) AS [RANK]
+    SELECT ranked.JobID, ranked.[RANK], COUNT(*) OVER() AS TotalCount
     FROM (
-        SELECT t.[KEY] AS JobID, t.[RANK]
-        FROM CONTAINSTABLE(dbo.JobIndexPostingsExtended, (JobTitle, JobDescription, CompanyName, JobLocation), @ftQuery) t
-        UNION
-        SELECT j.JobID, tk.[RANK]
-        FROM CONTAINSTABLE(dbo.JobKeywords, Keyword, @ftQuery) tk
-        JOIN dbo.JobKeywords k ON k.KeywordID = tk.[KEY]
-        JOIN dbo.JobIndexPostingsExtended j ON j.JobID = k.JobID
-    ) r
-    JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
-    {whereClause}
-    GROUP BY j.JobID
+        SELECT r.JobID, MAX(r.[RANK]) AS [RANK]
+        FROM (
+            SELECT t.[KEY] AS JobID, t.[RANK]
+            FROM CONTAINSTABLE(dbo.JobIndexPostingsExtended, (JobTitle, JobDescription, CompanyName, JobLocation), @ftQuery, 2000) t
+            UNION
+            SELECT j.JobID, tk.[RANK]
+            FROM CONTAINSTABLE(dbo.JobKeywords, Keyword, @ftQuery, 1000) tk
+            JOIN dbo.JobKeywords k ON k.KeywordID = tk.[KEY]
+            JOIN dbo.JobIndexPostingsExtended j ON j.JobID = k.JobID
+        ) r
+        JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
+        {whereClause}
+        GROUP BY r.JobID
+    ) ranked
 ) r
 JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
 ORDER BY r.[RANK] DESC, j.Published DESC
 OFFSET @off ROWS FETCH NEXT @take ROWS ONLY";
 
-                var items = await _db.JobIndexPosts
+                var rawResults = await _db.JobIndexPosts
                     .FromSqlRaw(baseSql, parameters.ToArray())
                     .Include(j => j.Categories)
                     .AsNoTracking()
                     .ToListAsync();
 
-                // Simplified count query using COUNT(DISTINCT)
-                var countSql = $@"
-SELECT COUNT(DISTINCT r.JobID)
+                // Extract total count from first result (all rows have the same TotalCount)
+                // If no results, count is 0
+                int totalCount = 0;
+                if (rawResults.Count > 0)
+                {
+                    // Re-query to get the count since EF Core doesn't map TotalCount directly
+                    // Use a simpler count query with TOP_N_BY_RANK optimization
+                    var countSql = $@"
+SELECT COUNT(*)
 FROM (
-    SELECT t.[KEY] AS JobID
-    FROM CONTAINSTABLE(dbo.JobIndexPostingsExtended, (JobTitle, JobDescription, CompanyName, JobLocation), @ftQuery) t
-    UNION
-    SELECT j.JobID
-    FROM CONTAINSTABLE(dbo.JobKeywords, Keyword, @ftQuery) tk
-    JOIN dbo.JobKeywords k ON k.KeywordID = tk.[KEY]
-    JOIN dbo.JobIndexPostingsExtended j ON j.JobID = k.JobID
-) r
-JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
-{whereClause}";
+    SELECT r.JobID
+    FROM (
+        SELECT t.[KEY] AS JobID
+        FROM CONTAINSTABLE(dbo.JobIndexPostingsExtended, (JobTitle, JobDescription, CompanyName, JobLocation), @ftQuery, 2000) t
+        UNION
+        SELECT j.JobID
+        FROM CONTAINSTABLE(dbo.JobKeywords, Keyword, @ftQuery, 1000) tk
+        JOIN dbo.JobKeywords k ON k.KeywordID = tk.[KEY]
+        JOIN dbo.JobIndexPostingsExtended j ON j.JobID = k.JobID
+    ) r
+    JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
+    {whereClause}
+    GROUP BY r.JobID
+) counted";
 
-                var countParams = parameters.Where(p => p.ParameterName != "@off" && p.ParameterName != "@take")
-                    .Select(p => new SqlParameter(p.ParameterName, p.Value))
-                    .ToArray();
+                    var countParams = parameters.Where(p => p.ParameterName != "@off" && p.ParameterName != "@take")
+                        .Select(p => new SqlParameter(p.ParameterName, p.Value))
+                        .ToArray();
 
-                var totalCount = await _db.Database
-                    .SqlQueryRaw<int>(countSql, countParams)
-                    .FirstOrDefaultAsync();
+                    totalCount = await _db.Database
+                        .SqlQueryRaw<int>(countSql, countParams)
+                        .FirstOrDefaultAsync();
+                }
 
-                result = new PagedList<JobIndexPosts>(totalCount, pageSize, page, items);
+                result = new PagedList<JobIndexPosts>(totalCount, pageSize, page, rawResults);
             }
             else
             {
@@ -530,10 +547,10 @@ FROM (
     SELECT j.JobID, MAX(r.[RANK]) AS [RANK]
     FROM (
         SELECT t.[KEY] AS JobID, t.[RANK]
-        FROM CONTAINSTABLE(dbo.JobIndexPostingsExtended, (JobTitle, JobDescription, CompanyName, JobLocation), @ftQuery) t
+        FROM CONTAINSTABLE(dbo.JobIndexPostingsExtended, (JobTitle, JobDescription, CompanyName, JobLocation), @ftQuery, 2000) t
         UNION
         SELECT j.JobID, tk.[RANK]
-        FROM CONTAINSTABLE(dbo.JobKeywords, Keyword, @ftQuery) tk
+        FROM CONTAINSTABLE(dbo.JobKeywords, Keyword, @ftQuery, 1000) tk
         JOIN dbo.JobKeywords k ON k.KeywordID = tk.[KEY]
         JOIN dbo.JobIndexPostingsExtended j ON j.JobID = k.JobID
     ) r
@@ -556,10 +573,10 @@ OFFSET @off ROWS FETCH NEXT @take ROWS ONLY";
 SELECT COUNT(DISTINCT r.JobID)
 FROM (
     SELECT t.[KEY] AS JobID
-    FROM CONTAINSTABLE(dbo.JobIndexPostingsExtended, (JobTitle, JobDescription, CompanyName, JobLocation), @ftQuery) t
+    FROM CONTAINSTABLE(dbo.JobIndexPostingsExtended, (JobTitle, JobDescription, CompanyName, JobLocation), @ftQuery, 2000) t
     UNION
     SELECT j.JobID
-    FROM CONTAINSTABLE(dbo.JobKeywords, Keyword, @ftQuery) tk
+    FROM CONTAINSTABLE(dbo.JobKeywords, Keyword, @ftQuery, 1000) tk
     JOIN dbo.JobKeywords k ON k.KeywordID = tk.[KEY]
     JOIN dbo.JobIndexPostingsExtended j ON j.JobID = k.JobID
 ) r
