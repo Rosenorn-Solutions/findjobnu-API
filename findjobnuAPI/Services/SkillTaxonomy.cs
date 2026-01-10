@@ -1,7 +1,5 @@
-using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
-using SharedInfrastructure.Skills;
 
 namespace FindjobnuService.Services;
 

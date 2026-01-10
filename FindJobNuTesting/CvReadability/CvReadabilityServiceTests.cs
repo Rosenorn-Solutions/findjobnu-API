@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-using System.Linq;
 using FindjobnuService.Repositories.Context;
 using FindjobnuService.Services;
 using Microsoft.AspNetCore.Http;

@@ -351,9 +351,9 @@ namespace FindjobnuTesting
 
             // Filter: (C# OR Python) AND (New York OR Los Angeles) AND IT category
             var result = await service.SearchAsync(
-                ["C#", "Python"], 
-                ["New York", "Los Angeles"], 
-                [itCategory.CategoryID], 
+                ["C#", "Python"],
+                ["New York", "Los Angeles"],
+                [itCategory.CategoryID],
                 null, null, 1, 20);
 
             Assert.Equal(3, result.TotalCount);
@@ -503,9 +503,9 @@ namespace FindjobnuTesting
             var service = new JobIndexPostsService(context, logger);
             // Filter: (Senior OR Junior) AND (New York OR Los Angeles) AND IT category
             var request = new RecommendedJobsRequest(
-                ["Senior", "Junior"], 
-                ["New York", "Los Angeles"], 
-                [itCategory.CategoryID], 
+                ["Senior", "Junior"],
+                ["New York", "Los Angeles"],
+                [itCategory.CategoryID],
                 null, null, 1, 10);
 
             var result = await service.GetRecommendedJobsByUserAndProfile("user1", request);

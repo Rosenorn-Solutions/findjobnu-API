@@ -232,18 +232,18 @@ public class CvService : ICvService
         var phone = ParsePhone(text);
         var about = ExtractSectionText(lines, new[] { "summary", "profile", "about", "om", "bio", "profil", "resumé", "resume" });
         var location = ParseLocation(lines, text);
-        
+
         // Try to extract skills from dedicated section first
         var skillsSection = ExtractSectionText(lines, SkillSectionHeaders);
         var skills = ParseSkills(skillsSection);
-        
+
         // If no skills found in section, scan entire document for known canonical skills
         if (skills.Count == 0)
         {
             _logger.LogDebug("No skills section found, scanning entire document for known skills");
             skills = ScanTextForKnownSkills(text);
         }
-        
+
         var experiencesSection = ExtractSectionText(lines, new[] { "experience", "erfaring", "work experience", "employment", "arbejdserfaring", "erhvervserfaring", "ansættelse", "career", "karriere" });
         var experiences = ParseExperiences(experiencesSection);
         var educationsSection = ExtractSectionText(lines, new[] { "education", "uddannelse", "academic", "akademisk", "studies", "studier", "training", "kurser" });
@@ -305,14 +305,14 @@ public class CvService : ICvService
         // Common location label patterns in English and Danish
         var locationLabels = new[]
         {
-            "location", "address", "city", "adresse", "by", "sted", "bopæl", 
+            "location", "address", "city", "adresse", "by", "sted", "bopæl",
             "område", "region", "postnummer", "zip", "postal"
         };
 
         foreach (var line in lines)
         {
             var lower = line.ToLowerInvariant().Trim();
-            
+
             // Check for labeled location (e.g., "Location: Copenhagen")
             foreach (var label in locationLabels)
             {
@@ -394,14 +394,14 @@ public class CvService : ICvService
         foreach (var line in lines)
         {
             var lower = line.Trim().ToLowerInvariant();
-            
+
             // Check if line contains any section header (not just starts with)
-            var matchedHeader = sectionHeaders.FirstOrDefault(h => 
-                lower.StartsWith(h) || 
+            var matchedHeader = sectionHeaders.FirstOrDefault(h =>
+                lower.StartsWith(h) ||
                 lower.Contains(h + ":") ||
                 lower.Contains(h + " :") ||
                 lower == h);
-            
+
             if (matchedHeader != null)
             {
                 inSection = true;
@@ -419,7 +419,7 @@ public class CvService : ICvService
             }
 
             // Check for stop headers (other sections starting)
-            var isStopHeader = DefaultSectionKeywords.Any(h => lower.StartsWith(h) || lower == h) && 
+            var isStopHeader = DefaultSectionKeywords.Any(h => lower.StartsWith(h) || lower == h) &&
                                !sectionHeaders.Any(h => lower.StartsWith(h) || lower == h);
             if (inSection && isStopHeader)
             {
@@ -491,12 +491,12 @@ public class CvService : ICvService
             var cleaned = token.Trim();
             if (string.IsNullOrWhiteSpace(cleaned)) continue;
             if (cleaned.StartsWith("%", StringComparison.Ordinal)) continue;
-            if (cleaned.StartsWith("•") || cleaned.StartsWith("?")) 
+            if (cleaned.StartsWith("•") || cleaned.StartsWith("?"))
             {
                 cleaned = cleaned.TrimStart('•', '?', ' ');
             }
             if (!cleaned.Any(char.IsLetterOrDigit)) continue;
-            
+
             // Skip if it looks like a sentence (too many words)
             var wordCount = cleaned.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
             if (wordCount > 5) continue;
@@ -525,7 +525,7 @@ public class CvService : ICvService
 
         // Try to split by date patterns first (more reliable than blank lines)
         var chunks = SplitByExperienceMarkers(sectionText);
-        
+
         foreach (var chunk in chunks)
         {
             var lines = chunk.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -545,20 +545,20 @@ public class CvService : ICvService
     {
         // First try splitting by blank lines
         var chunks = SplitByBlankLines(sectionText);
-        
+
         // If only one chunk, try splitting by date patterns
         if (chunks.Count <= 1 && !string.IsNullOrWhiteSpace(sectionText))
         {
             // Pattern for dates like "2020 - 2023", "Jan 2020 - Present", "2020-present", "2019 – nu"
             var datePattern = @"(?=\n(?:\d{4}|\w{3,}\s+\d{4})\s*[-–—]\s*(?:\d{4}|present|nu|current|ongoing|now|i dag))";
             var splitChunks = Regex.Split(sectionText, datePattern, RegexOptions.IgnoreCase);
-            
+
             if (splitChunks.Length > 1)
             {
                 chunks = splitChunks.Where(c => !string.IsNullOrWhiteSpace(c)).ToList();
             }
         }
-        
+
         return chunks;
     }
 
@@ -573,11 +573,11 @@ public class CvService : ICvService
 
         // Date pattern to identify date lines
         var datePattern = @"(\d{4}|\w{3,}\s+\d{4})\s*[-–—]\s*(\d{4}|present|nu|current|ongoing|now|i dag|dato)";
-        
+
         for (int i = 0; i < lines.Length; i++)
         {
             var line = lines[i].Trim();
-            
+
             // Check if line contains a date range
             var dateMatch = Regex.Match(line, datePattern, RegexOptions.IgnoreCase);
             if (dateMatch.Success)
@@ -585,7 +585,7 @@ public class CvService : ICvService
                 dateRange = dateMatch.Value;
                 // Remove date from line to get remaining content
                 var remaining = Regex.Replace(line, datePattern, "", RegexOptions.IgnoreCase).Trim().Trim('-', '–', '—', '|', ' ');
-                
+
                 if (!string.IsNullOrWhiteSpace(remaining))
                 {
                     // The remaining part might be company or role
@@ -602,7 +602,7 @@ public class CvService : ICvService
                 }
                 continue;
             }
-            
+
             // First non-date line is likely company/role
             if (i == 0 || (string.IsNullOrEmpty(company) && i <= 2))
             {
@@ -649,12 +649,12 @@ public class CvService : ICvService
         }
 
         var description = string.Join('\n', descriptionLines);
-        
+
         // Include date range in description if found
         if (!string.IsNullOrEmpty(dateRange) && !description.Contains(dateRange))
         {
-            description = string.IsNullOrEmpty(description) 
-                ? dateRange 
+            description = string.IsNullOrEmpty(description)
+                ? dateRange
                 : $"{dateRange}\n{description}";
         }
 
@@ -688,10 +688,10 @@ public class CvService : ICvService
     private static (string Company, string Role) ParseCompanyAndRole(string line)
     {
         if (string.IsNullOrWhiteSpace(line)) return (string.Empty, string.Empty);
-        
+
         // Try different separators in order of preference
         var separators = new[] { " - ", " – ", " — ", " | ", " @ ", ", " };
-        
+
         foreach (var sep in separators)
         {
             if (line.Contains(sep))
@@ -714,7 +714,7 @@ public class CvService : ICvService
                 }
             }
         }
-        
+
         return (line, string.Empty);
     }
 
@@ -1264,8 +1264,8 @@ public class CvService : ICvService
         var hasPhone = Regex.IsMatch(text, @"(\n|\s)(\+?\d[\d\s().-]{6,}\d)");
 
         var bulletCount = Regex.Matches(text, @"(^|\n)[\u2022\-*•] \s?").Count;
-        
-        var matchedSections = DefaultSectionKeywords.Count(k => 
+
+        var matchedSections = DefaultSectionKeywords.Count(k =>
             Regex.IsMatch(text, $@"(^|\n)\s*{Regex.Escape(k)}\b", RegexOptions.IgnoreCase | RegexOptions.Multiline));
 
         return new CvReadabilitySummary(
