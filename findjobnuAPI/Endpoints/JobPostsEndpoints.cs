@@ -50,9 +50,9 @@ public static class JobPostsEndpoints
             try
             {
                 var pagedList = await service.SearchAsync(
-                    request.SearchTerm,
-                    request.Location,
-                    request.CategoryId,
+                    request.SearchTerms,
+                    request.Locations,
+                    request.CategoryIds,
                     request.PostedAfter,
                     request.PostedBefore,
                     request.Page,
