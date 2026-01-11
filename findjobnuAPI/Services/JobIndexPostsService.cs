@@ -119,17 +119,10 @@ namespace FindjobnuService.Services
 
             PagedList<JobIndexPosts> result;
 
-<<<<<<< Updated upstream
-            // Build full-text query from multiple search terms
-            var ftQuery = (normalizedSearchTerms == null || normalizedSearchTerms.Count == 0) 
-                ? null 
-                : string.Join(" OR ", normalizedSearchTerms.Select(t => $"\"{t}\""));
-=======
             bool hasSearchTerms = normalizedSearchTerms != null && normalizedSearchTerms.Count > 0;
             bool hasFilters = (locationTokens != null && locationTokens.Count > 0) ||
                               (normalizedCategoryIds != null && normalizedCategoryIds.Count > 0) ||
                               postedAfter.HasValue || postedBefore.HasValue;
->>>>>>> Stashed changes
 
             if (_db.Database.IsSqlServer())
             {
@@ -147,163 +140,6 @@ namespace FindjobnuService.Services
                 }
                 else if (hasFilters)
                 {
-<<<<<<< Updated upstream
-                    whereConditions.Add("j.Published <= @postedBefore");
-                    parameters.Add(new SqlParameter("@postedBefore", postedBefore.Value));
-                }
-                
-                // Multiple locations with OR logic
-                if (locationTokens != null && locationTokens.Count > 0)
-                {
-                    var locationConditions = new List<string>();
-                    for (int i = 0; i < locationTokens.Count; i++)
-                    {
-                        var paramName = $"@location{i}";
-                        locationConditions.Add($"j.JobLocation LIKE '%' + {paramName} + '%'");
-                        parameters.Add(new SqlParameter(paramName, locationTokens[i]));
-                    }
-                    whereConditions.Add($"({string.Join(" OR ", locationConditions)})");
-                }
-
-                // Multiple categories with OR logic
-                if (normalizedCategoryIds != null && normalizedCategoryIds.Count > 0)
-                {
-                    var categoryConditions = new List<string>();
-                    for (int i = 0; i < normalizedCategoryIds.Count; i++)
-                    {
-                        var paramName = $"@categoryId{i}";
-                        categoryConditions.Add($"jc.CategoryID = {paramName}");
-                        parameters.Add(new SqlParameter(paramName, normalizedCategoryIds[i]));
-                    }
-                    whereConditions.Add($"EXISTS (SELECT 1 FROM dbo.JobCategories jc WHERE jc.JobID = j.JobID AND ({string.Join(" OR ", categoryConditions)}))");
-                }
-
-                var whereClause = whereConditions.Count > 0 
-                    ? "WHERE " + string.Join(" AND ", whereConditions) 
-                    : "";
-
-                // Optimized query with:
-                // 1. TOP_N_BY_RANK (2000) to limit full-text results early
-                // 2. Filters applied inside subquery (early filter pushdown)
-                // 3. COUNT(*) OVER() to get total count in single query pass
-                var baseSql = $@"
-SELECT j.*, r.TotalCount
-FROM (
-    SELECT ranked.JobID, ranked.[RANK], COUNT(*) OVER() AS TotalCount
-    FROM (
-        SELECT r.JobID, MAX(r.[RANK]) AS [RANK]
-        FROM (
-            SELECT t.[KEY] AS JobID, t.[RANK]
-            FROM CONTAINSTABLE(dbo.JobIndexPostingsExtended, (JobTitle, JobDescription, CompanyName, JobLocation), @ftQuery, 2000) t
-            UNION
-            SELECT j.JobID, tk.[RANK]
-            FROM CONTAINSTABLE(dbo.JobKeywords, Keyword, @ftQuery, 1000) tk
-            JOIN dbo.JobKeywords k ON k.KeywordID = tk.[KEY]
-            JOIN dbo.JobIndexPostingsExtended j ON j.JobID = k.JobID
-        ) r
-        JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
-        {whereClause}
-        GROUP BY r.JobID
-    ) ranked
-) r
-JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
-ORDER BY r.[RANK] DESC, j.Published DESC
-OFFSET @off ROWS FETCH NEXT @take ROWS ONLY";
-
-                var rawResults = await _db.JobIndexPosts
-                    .FromSqlRaw(baseSql, parameters.ToArray())
-                    .Include(j => j.Categories)
-                    .AsNoTracking()
-                    .ToListAsync();
-
-                // Extract total count from first result (all rows have the same TotalCount)
-                // If no results, count is 0
-                int totalCount = 0;
-                if (rawResults.Count > 0)
-                {
-                    // Re-query to get the count since EF Core doesn't map TotalCount directly
-                    // Use a simpler count query with TOP_N_BY_RANK optimization
-                    var countSql = $@"
-SELECT COUNT(*) AS Value
-FROM (
-    SELECT r.JobID
-    FROM (
-        SELECT t.[KEY] AS JobID
-        FROM CONTAINSTABLE(dbo.JobIndexPostingsExtended, (JobTitle, JobDescription, CompanyName, JobLocation), @ftQuery, 2000) t
-        UNION
-        SELECT j.JobID
-        FROM CONTAINSTABLE(dbo.JobKeywords, Keyword, @ftQuery, 1000) tk
-        JOIN dbo.JobKeywords k ON k.KeywordID = tk.[KEY]
-        JOIN dbo.JobIndexPostingsExtended j ON j.JobID = k.JobID
-    ) r
-    JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
-    {whereClause}
-    GROUP BY r.JobID
-) counted";
-
-                    var countParams = parameters.Where(p => p.ParameterName != "@off" && p.ParameterName != "@take")
-                        .Select(p => new SqlParameter(p.ParameterName, p.Value))
-                        .ToArray();
-
-                    totalCount = await _db.Database
-                        .SqlQueryRaw<int>(countSql, countParams)
-                        .FirstOrDefaultAsync();
-                }
-
-                result = new PagedList<JobIndexPosts>(totalCount, pageSize, page, rawResults);
-            }
-            else
-            {
-                // For InMemory/non-SQL Server: load data first then filter in memory
-                var jobs = await _db.JobIndexPosts.Include(j => j.Categories).AsNoTracking().ToListAsync();
-                var jobKeywords = await _db.JobKeywords.AsNoTracking().ToListAsync();
-                
-                IEnumerable<JobIndexPosts> filteredJobs = jobs;
-
-                // Date filters
-                if (postedAfter.HasValue)
-                {
-                    filteredJobs = filteredJobs.Where(j => j.Published >= postedAfter.Value);
-                }
-                if (postedBefore.HasValue)
-                {
-                    filteredJobs = filteredJobs.Where(j => j.Published <= postedBefore.Value);
-                }
-
-                // Multiple locations with OR logic - match city name prefix
-                if (locationTokens != null && locationTokens.Count > 0)
-                {
-                    filteredJobs = filteredJobs.Where(j => 
-                        j.JobLocation != null && 
-                        locationTokens.Any(loc => j.JobLocation.IndexOf(loc!, StringComparison.OrdinalIgnoreCase) >= 0));
-                }
-
-                // Multiple categories with OR logic
-                if (normalizedCategoryIds != null && normalizedCategoryIds.Count > 0)
-                {
-                    filteredJobs = filteredJobs.Where(j => 
-                        j.Categories != null && j.Categories.Any(c => normalizedCategoryIds.Contains(c.CategoryID)));
-                }
-
-                // Multiple search terms with OR logic
-                if (normalizedSearchTerms != null && normalizedSearchTerms.Count > 0)
-                {
-                    var terms = normalizedSearchTerms.Select(t => t.ToLowerInvariant()).ToList();
-                    filteredJobs = filteredJobs.Where(j =>
-                        (j.JobTitle != null && terms.Any(term => j.JobTitle.ToLower().Contains(term))) ||
-                        (j.CompanyName != null && terms.Any(term => j.CompanyName.ToLower().Contains(term))) ||
-                        (j.JobDescription != null && terms.Any(term => j.JobDescription.ToLower().Contains(term))) ||
-                        jobKeywords.Any(k => k.JobID == j.JobID && k.Keyword != null && terms.Any(term => k.Keyword.ToLower().Contains(term)))
-                    );
-                }
-
-                var filteredList = filteredJobs.ToList();
-                var total = filteredList.Count;
-                
-                if (total == 0)
-                {
-                    result = new PagedList<JobIndexPosts>(0, pageSize, page, []);
-=======
                     // Filter-only search (no full-text) - use EF Core query
                     result = await ExecuteSqlServerFilterOnlyAsync(
                         locationTokens,
@@ -312,7 +148,6 @@ FROM (
                         postedBefore,
                         page,
                         pageSize);
->>>>>>> Stashed changes
                 }
                 else
                 {
@@ -372,15 +207,15 @@ FROM (
             if (locationTokens != null && locationTokens.Count > 0)
             {
                 // Build OR condition for multiple locations
-                query = query.Where(j => 
-                    j.JobLocation != null && 
+                query = query.Where(j =>
+                    j.JobLocation != null &&
                     locationTokens.Any(loc => j.JobLocation.Contains(loc!)));
             }
 
             // Apply category filter (OR logic)
             if (categoryIds != null && categoryIds.Count > 0)
             {
-                query = query.Where(j => 
+                query = query.Where(j =>
                     j.Categories.Any(c => categoryIds.Contains(c.CategoryID)));
             }
 
@@ -523,7 +358,7 @@ FROM (
         }
 
         /// <summary>
-        /// Executes in-memory search for InMemory provider (tests) or when no search terms provided.
+        /// Executes in-memory search for InMemory provider (tests only).
         /// </summary>
         private async Task<PagedList<JobIndexPosts>> ExecuteInMemorySearchAsync(
             List<string>? searchTerms,
@@ -721,7 +556,7 @@ FROM (
 
             // Build recommendations with filters applied before paging
             var result = await BuildRecommendations(userId, request, page, pageSize);
-            
+
             _cache.Set(cacheKey, result, new MemoryCacheEntryOptions
             {
                 AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(2)
@@ -789,12 +624,12 @@ FROM (
         }
 
         private async Task<PagedList<JobIndexPosts>> BuildRecommendationsSqlServer(
-            List<string> keywords, 
-            RecommendedJobsRequest? request, 
+            List<string> keywords,
+            RecommendedJobsRequest? request,
             List<string?>? locationTokens,
             List<string>? searchTerms,
-            List<int>? categoryIds, 
-            int page, 
+            List<int>? categoryIds,
+            int page,
             int pageSize)
         {
             var queryBuilder = new JobSearchQueryBuilder()
@@ -810,75 +645,8 @@ FROM (
                 return await ExecuteRecommendationsStoredProcedureAsync(queryBuilder, page, pageSize);
             }
 
-<<<<<<< Updated upstream
-            // Multiple locations with OR logic
-            if (locationTokens != null && locationTokens.Count > 0)
-            {
-                var locationConditions = new List<string>();
-                for (int i = 0; i < locationTokens.Count; i++)
-                {
-                    var paramName = $"@location{i}";
-                    locationConditions.Add($"j.JobLocation LIKE '%' + {paramName} + '%'");
-                    parameters.Add(new SqlParameter(paramName, locationTokens[i]));
-                }
-                whereConditions.Add($"({string.Join(" OR ", locationConditions)})");
-            }
-
-            // Multiple categories with OR logic
-            if (categoryIds != null && categoryIds.Count > 0)
-            {
-                var categoryConditions = new List<string>();
-                for (int i = 0; i < categoryIds.Count; i++)
-                {
-                    var paramName = $"@categoryId{i}";
-                    categoryConditions.Add($"jc.CategoryID = {paramName}");
-                    parameters.Add(new SqlParameter(paramName, categoryIds[i]));
-                }
-                whereConditions.Add($"EXISTS (SELECT 1 FROM dbo.JobCategories jc WHERE jc.JobID = j.JobID AND ({string.Join(" OR ", categoryConditions)}))");
-            }
-
-            // Multiple search terms with OR logic (additional filter on top of profile keywords)
-            if (searchTerms != null && searchTerms.Count > 0)
-            {
-                var searchConditions = new List<string>();
-                for (int i = 0; i < searchTerms.Count; i++)
-                {
-                    var paramName = $"@searchTerm{i}";
-                    searchConditions.Add($"(j.JobTitle LIKE '%' + {paramName} + '%' OR j.CompanyName LIKE '%' + {paramName} + '%' OR j.JobDescription LIKE '%' + {paramName} + '%')");
-                    parameters.Add(new SqlParameter(paramName, searchTerms[i]));
-                }
-                whereConditions.Add($"({string.Join(" OR ", searchConditions)})");
-            }
-
-            var whereClause = whereConditions.Count > 0 
-                ? "WHERE " + string.Join(" AND ", whereConditions) 
-                : "";
-
-            // Use UNION instead of UNION ALL to avoid duplicates, GROUP BY for best rank
-            var baseSqlRec = $@"
-SELECT j.*
-FROM (
-    SELECT j.JobID, MAX(r.[RANK]) AS [RANK]
-    FROM (
-        SELECT t.[KEY] AS JobID, t.[RANK]
-        FROM CONTAINSTABLE(dbo.JobIndexPostingsExtended, (JobTitle, JobDescription, CompanyName, JobLocation), @ftQuery, 2000) t
-        UNION
-        SELECT j.JobID, tk.[RANK]
-        FROM CONTAINSTABLE(dbo.JobKeywords, Keyword, @ftQuery, 1000) tk
-        JOIN dbo.JobKeywords k ON k.KeywordID = tk.[KEY]
-        JOIN dbo.JobIndexPostingsExtended j ON j.JobID = k.JobID
-    ) r
-    JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
-    {whereClause}
-    GROUP BY j.JobID
-) r
-JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
-ORDER BY r.[RANK] DESC, j.Published DESC
-OFFSET @off ROWS FETCH NEXT @take ROWS ONLY";
-=======
             var sql = queryBuilder.BuildRecommendationsSqlWithCount();
             var parameters = queryBuilder.GetParameters();
->>>>>>> Stashed changes
 
             var items = await _db.JobIndexPosts
                 .FromSqlRaw(sql, parameters)
@@ -967,19 +735,16 @@ JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
                 .FirstOrDefaultAsync();
         }
 
+        /// <summary>
+        /// Builds recommendations in-memory for InMemory provider (tests only).
+        /// </summary>
         private async Task<PagedList<JobIndexPosts>> BuildRecommendationsInMemory(
-<<<<<<< Updated upstream
-            List<string> keywords, 
-            RecommendedJobsRequest? request, 
-            List<string>? locationTokens,
-=======
             List<string> keywords,
             RecommendedJobsRequest? request,
             List<string?>? locationTokens,
->>>>>>> Stashed changes
             List<string>? searchTerms,
-            List<int>? categoryIds, 
-            int page, 
+            List<int>? categoryIds,
+            int page,
             int pageSize)
         {
             var kw = keywords.Select(k => k.ToLowerInvariant()).ToList();
@@ -1009,21 +774,15 @@ JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
             // Multiple locations with OR logic
             if (locationTokens != null && locationTokens.Count > 0)
             {
-<<<<<<< Updated upstream
-                filteredJobs = filteredJobs.Where(j => 
-                    !string.IsNullOrWhiteSpace(j.JobLocation) && 
-                    locationTokens.Any(loc => j.JobLocation!.IndexOf(loc, StringComparison.OrdinalIgnoreCase) >= 0));
-=======
                 filteredJobs = filteredJobs.Where(j =>
                     !string.IsNullOrWhiteSpace(j.JobLocation) &&
                     locationTokens.Any(loc => j.JobLocation!.IndexOf(loc!, StringComparison.OrdinalIgnoreCase) >= 0));
->>>>>>> Stashed changes
             }
 
             // Multiple categories with OR logic
             if (categoryIds != null && categoryIds.Count > 0)
             {
-                filteredJobs = filteredJobs.Where(j => 
+                filteredJobs = filteredJobs.Where(j =>
                     j.Categories != null && j.Categories.Any(c => categoryIds.Contains(c.CategoryID)));
             }
 
