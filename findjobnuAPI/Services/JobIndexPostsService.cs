@@ -8,11 +8,41 @@ using Microsoft.Extensions.Caching.Memory;
 
 namespace FindjobnuService.Services
 {
+    /// <summary>
+    /// Service for job search and recommendations.
+    /// 
+    /// PERFORMANCE NOTES:
+    /// -----------------
+    /// For optimal SQL Server performance, ensure the following are configured:
+    /// 
+    /// 1. Run the SQL scripts in order:
+    ///    - CREATE_FULLTEXT_Jobs.sql (full-text catalog and indexes)
+    ///    - CREATE_SEARCH_INDEXES.sql (supporting indexes for filters)
+    ///    - CREATE_PROC_SearchJobs.sql (search stored procedure)
+    ///    - CREATE_PROC_RecommendedJobs.sql (recommendations stored procedure)
+    /// 
+    /// 2. Required indexes:
+    ///    - IX_JobIndexPostingsExtended_JobLocation (location LIKE queries)
+    ///    - IX_JobIndexPostingsExtended_Published (date range queries)
+    ///    - IX_JobCategories_JobID_CategoryID (category filtering)
+    ///    - IX_JobCategories_CategoryID_JobID (reverse lookup)
+    ///    - Full-text indexes on JobIndexPostingsExtended and JobKeywords
+    /// 
+    /// 3. To use stored procedures (recommended for production):
+    ///    Set UseStoredProcedures = true after deploying the SQL scripts.
+    /// </summary>
     public class JobIndexPostsService : IJobIndexPostsService
     {
         private readonly FindjobnuContext _db;
         private readonly ILogger<JobIndexPostsService> _logger;
         private readonly IMemoryCache _cache;
+
+        /// <summary>
+        /// Set to true to use stored procedures instead of inline SQL.
+        /// Stored procedures provide query plan caching benefits.
+        /// Requires: CREATE_PROC_SearchJobs.sql and CREATE_PROC_RecommendedJobs.sql
+        /// </summary>
+        public bool UseStoredProcedures { get; set; } = false;
 
         public JobIndexPostsService(FindjobnuContext db, ILogger<JobIndexPostsService> logger, IMemoryCache cache)
         {
@@ -71,7 +101,17 @@ namespace FindjobnuService.Services
                 .Distinct()
                 .ToList();
 
-            var cacheKey = $"search:{string.Join("|", normalizedSearchTerms ?? [])}|{string.Join("|", locationTokens ?? [])}|{string.Join("|", normalizedCategoryIds ?? [])}|{postedAfter:O}|{postedBefore:O}|{page}|{pageSize}";
+            // Use hash-based cache key for efficiency
+            var cacheKey = JobSearchQueryBuilder.GenerateCacheKey(
+                "search",
+                normalizedSearchTerms,
+                locationTokens,
+                normalizedCategoryIds,
+                postedAfter,
+                postedBefore,
+                page,
+                pageSize);
+
             if (_cache.TryGetValue<PagedList<JobIndexPosts>>(cacheKey, out var cached) && cached is not null)
             {
                 return cached;
@@ -79,32 +119,35 @@ namespace FindjobnuService.Services
 
             PagedList<JobIndexPosts> result;
 
+<<<<<<< Updated upstream
             // Build full-text query from multiple search terms
             var ftQuery = (normalizedSearchTerms == null || normalizedSearchTerms.Count == 0) 
                 ? null 
                 : string.Join(" OR ", normalizedSearchTerms.Select(t => $"\"{t}\""));
+=======
+            bool hasSearchTerms = normalizedSearchTerms != null && normalizedSearchTerms.Count > 0;
+            bool hasFilters = (locationTokens != null && locationTokens.Count > 0) ||
+                              (normalizedCategoryIds != null && normalizedCategoryIds.Count > 0) ||
+                              postedAfter.HasValue || postedBefore.HasValue;
+>>>>>>> Stashed changes
 
-            if (_db.Database.IsSqlServer() && !string.IsNullOrWhiteSpace(ftQuery))
+            if (_db.Database.IsSqlServer())
             {
-                var off = (page - 1) * pageSize;
-                var take = pageSize;
-
-                // Build dynamic WHERE clause for multiple locations and categories
-                var whereConditions = new List<string>();
-                var parameters = new List<SqlParameter>
+                if (hasSearchTerms)
                 {
-                    new SqlParameter("@ftQuery", ftQuery),
-                    new SqlParameter("@off", off),
-                    new SqlParameter("@take", take)
-                };
-
-                if (postedAfter.HasValue)
-                {
-                    whereConditions.Add("j.Published >= @postedAfter");
-                    parameters.Add(new SqlParameter("@postedAfter", postedAfter.Value));
+                    // Full-text search with optional filters
+                    result = await ExecuteSqlServerSearchAsync(
+                        normalizedSearchTerms!,
+                        locationTokens,
+                        normalizedCategoryIds,
+                        postedAfter,
+                        postedBefore,
+                        page,
+                        pageSize);
                 }
-                if (postedBefore.HasValue)
+                else if (hasFilters)
                 {
+<<<<<<< Updated upstream
                     whereConditions.Add("j.Published <= @postedBefore");
                     parameters.Add(new SqlParameter("@postedBefore", postedBefore.Value));
                 }
@@ -260,17 +303,34 @@ FROM (
                 if (total == 0)
                 {
                     result = new PagedList<JobIndexPosts>(0, pageSize, page, []);
+=======
+                    // Filter-only search (no full-text) - use EF Core query
+                    result = await ExecuteSqlServerFilterOnlyAsync(
+                        locationTokens,
+                        normalizedCategoryIds,
+                        postedAfter,
+                        postedBefore,
+                        page,
+                        pageSize);
+>>>>>>> Stashed changes
                 }
                 else
                 {
-                    var items = filteredList
-                        .OrderByDescending(j => j.Published)
-                        .Skip((page - 1) * pageSize)
-                        .Take(pageSize)
-                        .ToList();
-
-                    result = new PagedList<JobIndexPosts>(total, pageSize, page, items);
+                    // No search terms, no filters - just return paginated results
+                    result = await GetAllAsync(page, pageSize);
                 }
+            }
+            else
+            {
+                // InMemory provider (tests)
+                result = await ExecuteInMemorySearchAsync(
+                    normalizedSearchTerms,
+                    locationTokens,
+                    normalizedCategoryIds,
+                    postedAfter,
+                    postedBefore,
+                    page,
+                    pageSize);
             }
 
             _cache.Set(cacheKey, result, new MemoryCacheEntryOptions
@@ -279,6 +339,259 @@ FROM (
             });
 
             return result;
+        }
+
+        /// <summary>
+        /// Executes filter-only search using EF Core (no full-text search).
+        /// Used when location, category, or date filters are provided but no search terms.
+        /// </summary>
+        private async Task<PagedList<JobIndexPosts>> ExecuteSqlServerFilterOnlyAsync(
+            List<string?>? locationTokens,
+            List<int>? categoryIds,
+            DateTime? postedAfter,
+            DateTime? postedBefore,
+            int page,
+            int pageSize)
+        {
+            var query = _db.JobIndexPosts
+                .Include(j => j.Categories)
+                .AsNoTracking()
+                .AsQueryable();
+
+            // Apply date filters
+            if (postedAfter.HasValue)
+            {
+                query = query.Where(j => j.Published >= postedAfter.Value);
+            }
+            if (postedBefore.HasValue)
+            {
+                query = query.Where(j => j.Published <= postedBefore.Value);
+            }
+
+            // Apply location filter (OR logic)
+            if (locationTokens != null && locationTokens.Count > 0)
+            {
+                // Build OR condition for multiple locations
+                query = query.Where(j => 
+                    j.JobLocation != null && 
+                    locationTokens.Any(loc => j.JobLocation.Contains(loc!)));
+            }
+
+            // Apply category filter (OR logic)
+            if (categoryIds != null && categoryIds.Count > 0)
+            {
+                query = query.Where(j => 
+                    j.Categories.Any(c => categoryIds.Contains(c.CategoryID)));
+            }
+
+            // Get total count
+            var totalCount = await query.CountAsync();
+
+            if (totalCount == 0)
+            {
+                return new PagedList<JobIndexPosts>(0, pageSize, page, []);
+            }
+
+            // Get paginated results
+            var items = await query
+                .OrderByDescending(j => j.Published)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            return new PagedList<JobIndexPosts>(totalCount, pageSize, page, items);
+        }
+
+        /// <summary>
+        /// Executes optimized SQL Server search using full-text CONTAINSTABLE.
+        /// Can use either inline SQL or stored procedure based on UseStoredProcedures setting.
+        /// </summary>
+        private async Task<PagedList<JobIndexPosts>> ExecuteSqlServerSearchAsync(
+            List<string> searchTerms,
+            List<string?>? locationTokens,
+            List<int>? categoryIds,
+            DateTime? postedAfter,
+            DateTime? postedBefore,
+            int page,
+            int pageSize)
+        {
+            var queryBuilder = new JobSearchQueryBuilder()
+                .WithFullTextQuery(searchTerms)
+                .WithPagination(page, pageSize)
+                .WithDateRange(postedAfter, postedBefore)
+                .WithLocations(locationTokens)
+                .WithCategories(categoryIds);
+
+            if (UseStoredProcedures)
+            {
+                return await ExecuteSearchStoredProcedureAsync(queryBuilder, page, pageSize);
+            }
+
+            var sql = queryBuilder.BuildSearchSqlWithCount();
+            var parameters = queryBuilder.GetParameters();
+
+            // Execute single query that returns both data and count
+            var rawResults = await _db.JobIndexPosts
+                .FromSqlRaw(sql, parameters)
+                .Include(j => j.Categories)
+                .AsNoTracking()
+                .ToListAsync();
+
+            // Execute count query only if we have results
+            int totalCount = 0;
+            if (rawResults.Count > 0)
+            {
+                totalCount = await ExecuteCountQueryAsync(queryBuilder);
+            }
+
+            return new PagedList<JobIndexPosts>(totalCount, pageSize, page, rawResults);
+        }
+
+        /// <summary>
+        /// Executes search using stored procedure for query plan caching benefits.
+        /// Note: Categories are loaded separately since stored procedures are non-composable.
+        /// </summary>
+        private async Task<PagedList<JobIndexPosts>> ExecuteSearchStoredProcedureAsync(
+            JobSearchQueryBuilder queryBuilder,
+            int page,
+            int pageSize)
+        {
+            var parameters = queryBuilder.GetStoredProcedureParameters(includeSearchTerms: false);
+            var sql = queryBuilder.BuildSearchStoredProcedureCall();
+
+            // Execute stored procedure - cannot use Include() with stored procedures
+            var items = await _db.JobIndexPosts
+                .FromSqlRaw(sql, parameters)
+                .AsNoTracking()
+                .ToListAsync();
+
+            // Load categories separately for the returned jobs
+            if (items.Count > 0)
+            {
+                var jobIds = items.Select(j => j.JobID).ToList();
+                var jobCategories = await _db.JobIndexPosts
+                    .Where(j => jobIds.Contains(j.JobID))
+                    .Include(j => j.Categories)
+                    .AsNoTracking()
+                    .ToDictionaryAsync(j => j.JobID, j => j.Categories);
+
+                foreach (var job in items)
+                {
+                    if (jobCategories.TryGetValue(job.JobID, out var categories))
+                    {
+                        job.Categories = categories;
+                    }
+                }
+            }
+
+            // Get total count from output parameter
+            var totalCountParam = parameters.FirstOrDefault(p => p.ParameterName == "@totalCount");
+            var totalCount = totalCountParam?.Value is int count ? count : 0;
+
+            return new PagedList<JobIndexPosts>(totalCount, pageSize, page, items);
+        }
+
+        /// <summary>
+        /// Executes a lightweight count query using the same filters.
+        /// </summary>
+        private async Task<int> ExecuteCountQueryAsync(JobSearchQueryBuilder queryBuilder)
+        {
+            var whereClause = queryBuilder.BuildWhereClause();
+            var countParams = queryBuilder.GetCountParameters();
+
+            var countSql = $@"
+SELECT COUNT(*) AS Value
+FROM (
+    SELECT r.JobID
+    FROM (
+        SELECT t.[KEY] AS JobID
+        FROM CONTAINSTABLE(dbo.JobIndexPostingsExtended, (JobTitle, JobDescription, CompanyName, JobLocation), @ftQuery, {queryBuilder.MainTableTopN}) t
+        UNION
+        SELECT j.JobID
+        FROM CONTAINSTABLE(dbo.JobKeywords, Keyword, @ftQuery, {queryBuilder.KeywordsTableTopN}) tk
+        JOIN dbo.JobKeywords k ON k.KeywordID = tk.[KEY]
+        JOIN dbo.JobIndexPostingsExtended j ON j.JobID = k.JobID
+    ) r
+    JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
+    {whereClause}
+    GROUP BY r.JobID
+) counted";
+
+            return await _db.Database
+                .SqlQueryRaw<int>(countSql, countParams)
+                .FirstOrDefaultAsync();
+        }
+
+        /// <summary>
+        /// Executes in-memory search for InMemory provider (tests) or when no search terms provided.
+        /// </summary>
+        private async Task<PagedList<JobIndexPosts>> ExecuteInMemorySearchAsync(
+            List<string>? searchTerms,
+            List<string?>? locationTokens,
+            List<int>? categoryIds,
+            DateTime? postedAfter,
+            DateTime? postedBefore,
+            int page,
+            int pageSize)
+        {
+            // For InMemory/non-SQL Server: load data first then filter in memory
+            var jobs = await _db.JobIndexPosts.Include(j => j.Categories).AsNoTracking().ToListAsync();
+            var jobKeywords = await _db.JobKeywords.AsNoTracking().ToListAsync();
+
+            IEnumerable<JobIndexPosts> filteredJobs = jobs;
+
+            // Date filters
+            if (postedAfter.HasValue)
+            {
+                filteredJobs = filteredJobs.Where(j => j.Published >= postedAfter.Value);
+            }
+            if (postedBefore.HasValue)
+            {
+                filteredJobs = filteredJobs.Where(j => j.Published <= postedBefore.Value);
+            }
+
+            // Multiple locations with OR logic - match city name prefix
+            if (locationTokens != null && locationTokens.Count > 0)
+            {
+                filteredJobs = filteredJobs.Where(j =>
+                    j.JobLocation != null &&
+                    locationTokens.Any(loc => j.JobLocation.IndexOf(loc!, StringComparison.OrdinalIgnoreCase) >= 0));
+            }
+
+            // Multiple categories with OR logic
+            if (categoryIds != null && categoryIds.Count > 0)
+            {
+                filteredJobs = filteredJobs.Where(j =>
+                    j.Categories != null && j.Categories.Any(c => categoryIds.Contains(c.CategoryID)));
+            }
+
+            // Multiple search terms with OR logic
+            if (searchTerms != null && searchTerms.Count > 0)
+            {
+                var terms = searchTerms.Select(t => t.ToLowerInvariant()).ToList();
+                filteredJobs = filteredJobs.Where(j =>
+                    (j.JobTitle != null && terms.Any(term => j.JobTitle.ToLower().Contains(term))) ||
+                    (j.CompanyName != null && terms.Any(term => j.CompanyName.ToLower().Contains(term))) ||
+                    (j.JobDescription != null && terms.Any(term => j.JobDescription.ToLower().Contains(term))) ||
+                    jobKeywords.Any(k => k.JobID == j.JobID && k.Keyword != null && terms.Any(term => k.Keyword.ToLower().Contains(term)))
+                );
+            }
+
+            var filteredList = filteredJobs.ToList();
+            var total = filteredList.Count;
+
+            if (total == 0)
+            {
+                return new PagedList<JobIndexPosts>(0, pageSize, page, []);
+            }
+
+            var items = filteredList
+                .OrderByDescending(j => j.Published)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToList();
+
+            return new PagedList<JobIndexPosts>(total, pageSize, page, items);
         }
 
         public async Task<JobIndexPosts> GetByIdAsync(int id)
@@ -385,11 +698,22 @@ FROM (
             if (page < 1) page = 1;
             if (pageSize < 1) pageSize = 20;
 
-            // Include all filter parameters in cache key
-            var searchTermsKey = request?.SearchTerms != null ? string.Join(",", request.SearchTerms.Where(t => !string.IsNullOrWhiteSpace(t))) : "";
-            var locationsKey = request?.Locations != null ? string.Join(",", request.Locations.Where(l => !string.IsNullOrWhiteSpace(l))) : "";
-            var categoryIdsKey = request?.CategoryIds != null ? string.Join(",", request.CategoryIds.Where(id => id > 0)) : "";
-            var cacheKey = $"rec:{userId}:{page}:{pageSize}:{searchTermsKey}:{locationsKey}:{categoryIdsKey}:{request?.PostedAfter:O}:{request?.PostedBefore:O}";
+            // Normalize filter parameters for cache key
+            var searchTerms = request?.SearchTerms?.Where(t => !string.IsNullOrWhiteSpace(t)).ToList();
+            var locations = request?.Locations?.Where(l => !string.IsNullOrWhiteSpace(l)).ToList();
+            var categoryIds = request?.CategoryIds?.Where(id => id > 0).ToList();
+
+            // Use hash-based cache key for efficiency
+            var cacheKey = JobSearchQueryBuilder.GenerateCacheKey(
+                $"rec:{userId}",
+                searchTerms,
+                locations,
+                categoryIds,
+                request?.PostedAfter,
+                request?.PostedBefore,
+                page,
+                pageSize);
+
             if (_cache.TryGetValue<PagedList<JobIndexPosts>>(cacheKey, out var cachedResult) && cachedResult != null)
             {
                 return cachedResult;
@@ -473,30 +797,20 @@ FROM (
             int page, 
             int pageSize)
         {
-            var ftQuery = string.Join(" OR ", keywords.Select(k => $"\"{k}\""));
-            var off = (page - 1) * pageSize;
-            var take = pageSize;
+            var queryBuilder = new JobSearchQueryBuilder()
+                .WithFullTextQuery(keywords)
+                .WithPagination(page, pageSize)
+                .WithDateRange(request?.PostedAfter, request?.PostedBefore)
+                .WithLocations(locationTokens)
+                .WithCategories(categoryIds)
+                .WithSearchTermsLike(searchTerms);
 
-            // Build dynamic WHERE clause for filters
-            var whereConditions = new List<string>();
-            var parameters = new List<SqlParameter>
+            if (UseStoredProcedures)
             {
-                new SqlParameter("@ftQuery", ftQuery),
-                new SqlParameter("@off", off),
-                new SqlParameter("@take", take)
-            };
-
-            if (request?.PostedAfter.HasValue == true)
-            {
-                whereConditions.Add("j.Published >= @postedAfter");
-                parameters.Add(new SqlParameter("@postedAfter", request.PostedAfter.Value));
-            }
-            if (request?.PostedBefore.HasValue == true)
-            {
-                whereConditions.Add("j.Published <= @postedBefore");
-                parameters.Add(new SqlParameter("@postedBefore", request.PostedBefore.Value));
+                return await ExecuteRecommendationsStoredProcedureAsync(queryBuilder, page, pageSize);
             }
 
+<<<<<<< Updated upstream
             // Multiple locations with OR logic
             if (locationTokens != null && locationTokens.Count > 0)
             {
@@ -561,43 +875,108 @@ FROM (
 JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
 ORDER BY r.[RANK] DESC, j.Published DESC
 OFFSET @off ROWS FETCH NEXT @take ROWS ONLY";
+=======
+            var sql = queryBuilder.BuildRecommendationsSqlWithCount();
+            var parameters = queryBuilder.GetParameters();
+>>>>>>> Stashed changes
 
             var items = await _db.JobIndexPosts
-                .FromSqlRaw(baseSqlRec, parameters.ToArray())
+                .FromSqlRaw(sql, parameters)
                 .Include(j => j.Categories)
                 .AsNoTracking()
                 .ToListAsync();
 
-            // Simplified count query using COUNT(DISTINCT) with Value alias for SqlQueryRaw<int>
+            // Execute count query only if we have results
+            int totalCount = 0;
+            if (items.Count > 0)
+            {
+                totalCount = await ExecuteRecommendationsCountQueryAsync(queryBuilder);
+            }
+
+            return new PagedList<JobIndexPosts>(totalCount, pageSize, page, items);
+        }
+
+        /// <summary>
+        /// Executes recommendations using stored procedure for query plan caching benefits.
+        /// Note: Categories are loaded separately since stored procedures are non-composable.
+        /// </summary>
+        private async Task<PagedList<JobIndexPosts>> ExecuteRecommendationsStoredProcedureAsync(
+            JobSearchQueryBuilder queryBuilder,
+            int page,
+            int pageSize)
+        {
+            var parameters = queryBuilder.GetStoredProcedureParameters(includeSearchTerms: true);
+            var sql = queryBuilder.BuildRecommendationsStoredProcedureCall();
+
+            // Execute stored procedure - cannot use Include() with stored procedures
+            var items = await _db.JobIndexPosts
+                .FromSqlRaw(sql, parameters)
+                .AsNoTracking()
+                .ToListAsync();
+
+            // Load categories separately for the returned jobs
+            if (items.Count > 0)
+            {
+                var jobIds = items.Select(j => j.JobID).ToList();
+                var jobCategories = await _db.JobIndexPosts
+                    .Where(j => jobIds.Contains(j.JobID))
+                    .Include(j => j.Categories)
+                    .AsNoTracking()
+                    .ToDictionaryAsync(j => j.JobID, j => j.Categories);
+
+                foreach (var job in items)
+                {
+                    if (jobCategories.TryGetValue(job.JobID, out var categories))
+                    {
+                        job.Categories = categories;
+                    }
+                }
+            }
+
+            // Get total count from output parameter
+            var totalCountParam = parameters.FirstOrDefault(p => p.ParameterName == "@totalCount");
+            var totalCount = totalCountParam?.Value is int count ? count : 0;
+
+            return new PagedList<JobIndexPosts>(totalCount, pageSize, page, items);
+        }
+
+        /// <summary>
+        /// Executes count query for recommendations.
+        /// </summary>
+        private async Task<int> ExecuteRecommendationsCountQueryAsync(JobSearchQueryBuilder queryBuilder)
+        {
+            var whereClause = queryBuilder.BuildWhereClause();
+            var countParams = queryBuilder.GetCountParameters();
+
             var countSql = $@"
 SELECT COUNT(DISTINCT r.JobID) AS Value
 FROM (
     SELECT t.[KEY] AS JobID
-    FROM CONTAINSTABLE(dbo.JobIndexPostingsExtended, (JobTitle, JobDescription, CompanyName, JobLocation), @ftQuery, 2000) t
+    FROM CONTAINSTABLE(dbo.JobIndexPostingsExtended, (JobTitle, JobDescription, CompanyName, JobLocation), @ftQuery, {queryBuilder.MainTableTopN}) t
     UNION
     SELECT j.JobID
-    FROM CONTAINSTABLE(dbo.JobKeywords, Keyword, @ftQuery, 1000) tk
+    FROM CONTAINSTABLE(dbo.JobKeywords, Keyword, @ftQuery, {queryBuilder.KeywordsTableTopN}) tk
     JOIN dbo.JobKeywords k ON k.KeywordID = tk.[KEY]
     JOIN dbo.JobIndexPostingsExtended j ON j.JobID = k.JobID
 ) r
 JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
 {whereClause}";
 
-            var countParams = parameters.Where(p => p.ParameterName != "@off" && p.ParameterName != "@take")
-                .Select(p => new SqlParameter(p.ParameterName, p.Value))
-                .ToArray();
-
-            var totalCount = await _db.Database
+            return await _db.Database
                 .SqlQueryRaw<int>(countSql, countParams)
                 .FirstOrDefaultAsync();
-
-            return new PagedList<JobIndexPosts>(totalCount, pageSize, page, items);
         }
 
         private async Task<PagedList<JobIndexPosts>> BuildRecommendationsInMemory(
+<<<<<<< Updated upstream
             List<string> keywords, 
             RecommendedJobsRequest? request, 
             List<string>? locationTokens,
+=======
+            List<string> keywords,
+            RecommendedJobsRequest? request,
+            List<string?>? locationTokens,
+>>>>>>> Stashed changes
             List<string>? searchTerms,
             List<int>? categoryIds, 
             int page, 
@@ -630,9 +1009,15 @@ JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
             // Multiple locations with OR logic
             if (locationTokens != null && locationTokens.Count > 0)
             {
+<<<<<<< Updated upstream
                 filteredJobs = filteredJobs.Where(j => 
                     !string.IsNullOrWhiteSpace(j.JobLocation) && 
                     locationTokens.Any(loc => j.JobLocation!.IndexOf(loc, StringComparison.OrdinalIgnoreCase) >= 0));
+=======
+                filteredJobs = filteredJobs.Where(j =>
+                    !string.IsNullOrWhiteSpace(j.JobLocation) &&
+                    locationTokens.Any(loc => j.JobLocation!.IndexOf(loc!, StringComparison.OrdinalIgnoreCase) >= 0));
+>>>>>>> Stashed changes
             }
 
             // Multiple categories with OR logic

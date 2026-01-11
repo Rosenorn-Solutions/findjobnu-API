@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.IdentityModel.Protocols.Configuration;
 using Microsoft.IdentityModel.Tokens;
@@ -118,7 +119,20 @@ namespace FindjobnuService
             builder.Services.AddSingleton<ISkillTaxonomy, SkillTaxonomy>();
 
             builder.Services.AddScoped<IProfileService, ProfileService>();
-            builder.Services.AddScoped<IJobIndexPostsService, JobIndexPostsService>();
+            builder.Services.AddScoped<IJobIndexPostsService>(sp =>
+            {
+                var db = sp.GetRequiredService<FindjobnuContext>();
+                var logger = sp.GetRequiredService<ILogger<JobIndexPostsService>>();
+                var cache = sp.GetRequiredService<IMemoryCache>();
+                var config = sp.GetRequiredService<IConfiguration>();
+                
+                var service = new JobIndexPostsService(db, logger, cache);
+                
+                // Enable stored procedures if configured (requires SQL scripts to be deployed)
+                service.UseStoredProcedures = config.GetValue<bool>("SearchOptimization:UseStoredProcedures");
+                
+                return service;
+            });
             builder.Services.AddScoped<INewsletterService, NewsletterService>();
             builder.Services.AddScoped<ILinkedInProfileService>(provider =>
             {
