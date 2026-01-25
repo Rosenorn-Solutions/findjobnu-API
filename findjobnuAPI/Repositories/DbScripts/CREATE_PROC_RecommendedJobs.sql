@@ -26,7 +26,7 @@ CREATE PROCEDURE dbo.usp_GetRecommendedJobs
     @take INT = 20,                             -- Pagination page size
     @mainTableTopN INT = 2000,                  -- TOP_N_BY_RANK limit for main table
     @keywordsTableTopN INT = 1000,              -- TOP_N_BY_RANK limit for keywords table
-    @minRank INT = 30,                          -- Minimum full-text rank required for inclusion
+    @minRank INT = 50,                          -- Minimum full-text rank required for inclusion
     @totalCount INT OUTPUT                      -- Output: total matching records
 AS
 BEGIN

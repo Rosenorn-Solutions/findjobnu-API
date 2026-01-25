@@ -34,7 +34,7 @@ namespace FindjobnuService.Services
     public class JobIndexPostsService : IJobIndexPostsService
     {
         private const int DefaultRecommendationFreshnessDays = 60;
-        public int RecommendationMinRank { get; set; } = 30;
+        public int RecommendationMinRank { get; set; } = 50;
         private readonly FindjobnuContext _db;
         private readonly ILogger<JobIndexPostsService> _logger;
         private readonly IMemoryCache _cache;
@@ -82,7 +82,7 @@ namespace FindjobnuService.Services
             if (pageSize < 1) pageSize = 20;
 
             // Normalize locations: take only the first word (city name) from each location
-            // "København K" -> "København", "Aarhus C" -> "Aarhus"
+            // "KÃ¸benhavn K" -> "KÃ¸benhavn", "Aarhus C" -> "Aarhus"
             var locationTokens = locations?
                 .Where(l => !string.IsNullOrWhiteSpace(l))
                 .Select(l => l.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault())
@@ -598,7 +598,7 @@ FROM (
                 return new PagedList<JobIndexPosts>(0, pageSize, page, []);
 
             // Normalize locations: take only the first word (city name) from each location
-            // "København K" -> "København", "Aarhus C" -> "Aarhus"
+            // "KÃ¸benhavn K" -> "KÃ¸benhavn", "Aarhus C" -> "Aarhus"
             var locationTokens = request?.Locations?
                 .Where(l => !string.IsNullOrWhiteSpace(l))
                 .Select(l => l.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault())
