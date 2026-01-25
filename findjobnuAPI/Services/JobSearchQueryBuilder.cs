@@ -16,6 +16,7 @@ public sealed class JobSearchQueryBuilder
     private readonly List<string?> _locationTokens = [];
     private readonly List<int> _categoryIds = [];
     private readonly List<string> _searchTermsLike = [];
+    private int? _minRank;
     private int _locationIndex;
     private int _categoryIndex;
     private int _searchTermIndex;
@@ -59,6 +60,21 @@ public sealed class JobSearchQueryBuilder
         {
             FullTextQuery = string.Join(" OR ", terms);
             _parameters.Add(new SqlParameter("@ftQuery", FullTextQuery));
+        }
+
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a minimum rank threshold for full-text results.
+    /// Only applied when value is greater than zero.
+    /// </summary>
+    public JobSearchQueryBuilder WithMinRank(int? minRank)
+    {
+        if (minRank.HasValue && minRank.Value > 0)
+        {
+            _minRank = minRank.Value;
+            _parameters.Add(new SqlParameter("@minRank", minRank.Value));
         }
 
         return this;
@@ -226,6 +242,7 @@ public sealed class JobSearchQueryBuilder
             new("@take", _pageSize),
             new("@mainTableTopN", MainTableTopN),
             new("@keywordsTableTopN", KeywordsTableTopN),
+            new("@minRank", _minRank.HasValue ? _minRank.Value : 0),
             new("@totalCount", System.Data.SqlDbType.Int) { Direction = System.Data.ParameterDirection.Output }
         };
 
@@ -338,6 +355,7 @@ OFFSET @off ROWS FETCH NEXT @take ROWS ONLY";
     public string BuildRecommendationsSqlWithCount()
     {
         var whereClause = BuildWhereClause();
+        var havingRank = _minRank.HasValue ? "HAVING MAX(r.[RANK]) >= @minRank" : string.Empty;
 
         return $@"
 ;WITH RankedResults AS (
@@ -354,6 +372,7 @@ OFFSET @off ROWS FETCH NEXT @take ROWS ONLY";
     JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
     {whereClause}
     GROUP BY j.JobID
+    {havingRank}
 ),
 CountedResults AS (
     SELECT JobID, [RANK], COUNT(*) OVER() AS TotalCount
@@ -380,6 +399,6 @@ OFFSET @off ROWS FETCH NEXT @take ROWS ONLY";
     /// </summary>
     public string BuildRecommendationsStoredProcedureCall()
     {
-        return "EXEC dbo.usp_GetRecommendedJobs @ftQuery, @searchTerms, @locations, @categoryIds, @postedAfter, @postedBefore, @offset, @take, @mainTableTopN, @keywordsTableTopN, @totalCount OUTPUT";
+        return "EXEC dbo.usp_GetRecommendedJobs @ftQuery, @searchTerms, @locations, @categoryIds, @postedAfter, @postedBefore, @offset, @take, @mainTableTopN, @keywordsTableTopN, @minRank, @totalCount OUTPUT";
     }
 }

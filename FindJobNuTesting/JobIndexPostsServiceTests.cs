@@ -474,6 +474,72 @@ namespace FindjobnuTesting
         }
 
         [Fact]
+        public async Task GetRecommendedJobsByUserAndProfile_DefaultFreshnessExcludesStaleJobs()
+        {
+            var options = new DbContextOptionsBuilder<FindjobnuContext>()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .Options;
+            using var context = new FindjobnuContext(options);
+            var logger = new Mock<ILogger<JobIndexPostsService>>().Object;
+
+            var category = new Category { Name = "IT" };
+            context.Categories.Add(category);
+            var recent = DateTime.UtcNow.AddDays(-5);
+            var stale = DateTime.UtcNow.AddDays(-120);
+            context.JobIndexPosts.AddRange(
+                new JobIndexPosts { JobID = 1, JobTitle = "Recent Developer", JobLocation = "NY", Categories = [category], Published = recent },
+                new JobIndexPosts { JobID = 2, JobTitle = "Old Developer", JobLocation = "NY", Categories = [category], Published = stale }
+            );
+            context.Profiles.Add(new Profile
+            {
+                Id = 1,
+                UserId = "user1",
+                BasicInfo = new BasicInfo { FirstName = "Test", LastName = "User", JobTitle = "Developer" },
+                Keywords = new List<string> { "Developer" }
+            });
+            await context.SaveChangesAsync();
+
+            var service = new JobIndexPostsService(context, logger);
+            var request = new RecommendedJobsRequest(null, null, null, null, null, 1, 10);
+
+            var result = await service.GetRecommendedJobsByUserAndProfile("user1", request);
+
+            Assert.Single(result.Items);
+            Assert.Equal(1, result.Items.First().JobID);
+        }
+
+        [Fact]
+        public async Task GetRecommendedJobsByUserAndProfile_AllowsOlderJobsWhenPostedAfterProvided()
+        {
+            var options = new DbContextOptionsBuilder<FindjobnuContext>()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .Options;
+            using var context = new FindjobnuContext(options);
+            var logger = new Mock<ILogger<JobIndexPostsService>>().Object;
+
+            var category = new Category { Name = "IT" };
+            context.Categories.Add(category);
+            var stale = DateTime.UtcNow.AddDays(-180);
+            context.JobIndexPosts.Add(new JobIndexPosts { JobID = 5, JobTitle = "Legacy Developer", JobLocation = "NY", Categories = [category], Published = stale });
+            context.Profiles.Add(new Profile
+            {
+                Id = 1,
+                UserId = "user1",
+                BasicInfo = new BasicInfo { FirstName = "Test", LastName = "User", JobTitle = "Developer" },
+                Keywords = new List<string> { "Developer" }
+            });
+            await context.SaveChangesAsync();
+
+            var service = new JobIndexPostsService(context, logger);
+            var request = new RecommendedJobsRequest(null, null, null, stale.AddDays(-1), null, 1, 10);
+
+            var result = await service.GetRecommendedJobsByUserAndProfile("user1", request);
+
+            Assert.Single(result.Items);
+            Assert.Equal(5, result.Items.First().JobID);
+        }
+
+        [Fact]
         public async Task GetRecommendedJobsByUserAndProfile_CombinedMultiValueFilters_AppliesAndLogicBetweenGroups()
         {
             var options = new DbContextOptionsBuilder<FindjobnuContext>()

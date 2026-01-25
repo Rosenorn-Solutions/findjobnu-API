@@ -130,6 +130,11 @@ namespace FindjobnuService
                 
                 // Enable stored procedures if configured (requires SQL scripts to be deployed)
                 service.UseStoredProcedures = config.GetValue<bool>("SearchOptimization:UseStoredProcedures");
+                var minRank = config.GetValue<int?>("SearchOptimization:RecommendationMinRank");
+                if (minRank.HasValue && minRank.Value > 0)
+                {
+                    service.RecommendationMinRank = minRank.Value;
+                }
                 
                 return service;
             });
