@@ -544,7 +544,7 @@ FROM (
 
             // Use hash-based cache key for efficiency
             var cacheKey = JobSearchQueryBuilder.GenerateCacheKey(
-                $"rec:{userId}:m{RecommendationMinRank}:fa{effectivePostedAfter.Ticks}",
+                $"rec:{userId}:m{RecommendationMinRank}",
                 searchTerms,
                 locations,
                 categoryIds,
