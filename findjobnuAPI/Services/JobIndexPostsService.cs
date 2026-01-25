@@ -33,6 +33,8 @@ namespace FindjobnuService.Services
     /// </summary>
     public class JobIndexPostsService : IJobIndexPostsService
     {
+        private const int DefaultRecommendationFreshnessDays = 60;
+        public int RecommendationMinRank { get; set; } = 50;
         private readonly FindjobnuContext _db;
         private readonly ILogger<JobIndexPostsService> _logger;
         private readonly IMemoryCache _cache;
@@ -80,7 +82,7 @@ namespace FindjobnuService.Services
             if (pageSize < 1) pageSize = 20;
 
             // Normalize locations: take only the first word (city name) from each location
-            // "København K" -> "København", "Aarhus C" -> "Aarhus"
+            // "KÃ¸benhavn K" -> "KÃ¸benhavn", "Aarhus C" -> "Aarhus"
             var locationTokens = locations?
                 .Where(l => !string.IsNullOrWhiteSpace(l))
                 .Select(l => l.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault())
@@ -533,6 +535,8 @@ FROM (
             if (page < 1) page = 1;
             if (pageSize < 1) pageSize = 20;
 
+            var effectivePostedAfter = request?.PostedAfter ?? DateTime.UtcNow.AddDays(-DefaultRecommendationFreshnessDays);
+
             // Normalize filter parameters for cache key
             var searchTerms = request?.SearchTerms?.Where(t => !string.IsNullOrWhiteSpace(t)).ToList();
             var locations = request?.Locations?.Where(l => !string.IsNullOrWhiteSpace(l)).ToList();
@@ -540,11 +544,11 @@ FROM (
 
             // Use hash-based cache key for efficiency
             var cacheKey = JobSearchQueryBuilder.GenerateCacheKey(
-                $"rec:{userId}",
+                $"rec:{userId}:m{RecommendationMinRank}",
                 searchTerms,
                 locations,
                 categoryIds,
-                request?.PostedAfter,
+                effectivePostedAfter,
                 request?.PostedBefore,
                 page,
                 pageSize);
@@ -555,7 +559,7 @@ FROM (
             }
 
             // Build recommendations with filters applied before paging
-            var result = await BuildRecommendations(userId, request, page, pageSize);
+            var result = await BuildRecommendations(userId, request, page, pageSize, effectivePostedAfter);
 
             _cache.Set(cacheKey, result, new MemoryCacheEntryOptions
             {
@@ -565,7 +569,7 @@ FROM (
             return result;
         }
 
-        private async Task<PagedList<JobIndexPosts>> BuildRecommendations(string userId, RecommendedJobsRequest? request, int page, int pageSize)
+        private async Task<PagedList<JobIndexPosts>> BuildRecommendations(string userId, RecommendedJobsRequest? request, int page, int pageSize, DateTime? effectivePostedAfter)
         {
             var profile = await _db.Profiles
                 .Include(p => p.BasicInfo)
@@ -594,7 +598,7 @@ FROM (
                 return new PagedList<JobIndexPosts>(0, pageSize, page, []);
 
             // Normalize locations: take only the first word (city name) from each location
-            // "København K" -> "København", "Aarhus C" -> "Aarhus"
+            // "KÃ¸benhavn K" -> "KÃ¸benhavn", "Aarhus C" -> "Aarhus"
             var locationTokens = request?.Locations?
                 .Where(l => !string.IsNullOrWhiteSpace(l))
                 .Select(l => l.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault())
@@ -615,11 +619,11 @@ FROM (
 
             if (_db.Database.IsSqlServer())
             {
-                return await BuildRecommendationsSqlServer(keywords, request, locationTokens, normalizedSearchTerms, normalizedCategoryIds, page, pageSize);
+                return await BuildRecommendationsSqlServer(keywords, request, locationTokens, normalizedSearchTerms, normalizedCategoryIds, page, pageSize, effectivePostedAfter);
             }
             else
             {
-                return await BuildRecommendationsInMemory(keywords, request, locationTokens, normalizedSearchTerms, normalizedCategoryIds, page, pageSize);
+                return await BuildRecommendationsInMemory(keywords, request, locationTokens, normalizedSearchTerms, normalizedCategoryIds, page, pageSize, effectivePostedAfter);
             }
         }
 
@@ -630,15 +634,17 @@ FROM (
             List<string>? searchTerms,
             List<int>? categoryIds,
             int page,
-            int pageSize)
+            int pageSize,
+            DateTime? effectivePostedAfter)
         {
             var queryBuilder = new JobSearchQueryBuilder()
                 .WithFullTextQuery(keywords)
                 .WithPagination(page, pageSize)
-                .WithDateRange(request?.PostedAfter, request?.PostedBefore)
+                .WithDateRange(effectivePostedAfter, request?.PostedBefore)
                 .WithLocations(locationTokens)
                 .WithCategories(categoryIds)
-                .WithSearchTermsLike(searchTerms);
+                .WithSearchTermsLike(searchTerms)
+                .WithMinRank(RecommendationMinRank);
 
             if (UseStoredProcedures)
             {
@@ -745,7 +751,8 @@ JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
             List<string>? searchTerms,
             List<int>? categoryIds,
             int page,
-            int pageSize)
+            int pageSize,
+            DateTime? effectivePostedAfter)
         {
             var kw = keywords.Select(k => k.ToLowerInvariant()).ToList();
             var jobs = await _db.JobIndexPosts.Include(j => j.Categories).AsNoTracking().ToListAsync();
@@ -762,9 +769,9 @@ JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
             ).AsEnumerable();
 
             // Apply additional filters from request
-            if (request?.PostedAfter.HasValue == true)
+            if (effectivePostedAfter.HasValue)
             {
-                filteredJobs = filteredJobs.Where(j => j.Published >= request.PostedAfter.Value);
+                filteredJobs = filteredJobs.Where(j => j.Published >= effectivePostedAfter.Value);
             }
             if (request?.PostedBefore.HasValue == true)
             {

@@ -26,6 +26,7 @@ CREATE PROCEDURE dbo.usp_GetRecommendedJobs
     @take INT = 20,                             -- Pagination page size
     @mainTableTopN INT = 2000,                  -- TOP_N_BY_RANK limit for main table
     @keywordsTableTopN INT = 1000,              -- TOP_N_BY_RANK limit for keywords table
+    @minRank INT = 50,                          -- Minimum full-text rank required for inclusion
     @totalCount INT OUTPUT                      -- Output: total matching records
 AS
 BEGIN
@@ -113,6 +114,7 @@ BEGIN
                 )
             )
         GROUP BY j.JobID
+        HAVING MAX(ft.[RANK]) >= @minRank
     ),
     -- Get count and add row numbers
     CountedAndNumbered AS (
@@ -139,12 +141,12 @@ BEGIN
             FROM (
                 SELECT ft.JobID
                 FROM (
-                    SELECT t.[KEY] AS JobID
+                    SELECT t.[KEY] AS JobID, t.[RANK] AS [RANK]
                     FROM CONTAINSTABLE(dbo.JobIndexPostingsExtended, 
                         (JobTitle, JobDescription, CompanyName, JobLocation), 
                         @ftQuery, @mainTableTopN) t
                     UNION
-                    SELECT j.JobID
+                    SELECT j.JobID, tk.[RANK] AS [RANK]
                     FROM CONTAINSTABLE(dbo.JobKeywords, Keyword, @ftQuery, @keywordsTableTopN) tk
                     JOIN dbo.JobKeywords k ON k.KeywordID = tk.[KEY]
                     JOIN dbo.JobIndexPostingsExtended j ON j.JobID = k.JobID
@@ -157,6 +159,7 @@ BEGIN
                     AND (NOT EXISTS (SELECT 1 FROM @TblCategories) OR EXISTS (SELECT 1 FROM dbo.JobCategories jc JOIN @TblCategories ci ON jc.CategoryID = ci.CategoryID WHERE jc.JobID = j.JobID))
                     AND (NOT EXISTS (SELECT 1 FROM @TblSearchTerms) OR EXISTS (SELECT 1 FROM @TblSearchTerms st WHERE j.JobTitle LIKE '%' + st.Term + '%' OR j.CompanyName LIKE '%' + st.Term + '%' OR j.JobDescription LIKE '%' + st.Term + '%'))
                 GROUP BY ft.JobID
+                HAVING MAX(ft.[RANK]) >= @minRank
             ) counted
         ) x), 0);
 END
