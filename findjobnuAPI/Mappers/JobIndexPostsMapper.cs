@@ -1,6 +1,5 @@
 using FindjobnuService.DTOs.Responses;
 using FindjobnuService.Models;
-using FindjobnuService.Utilities;
 
 namespace FindjobnuService.Mappers;
 
@@ -8,25 +7,20 @@ public static class JobIndexPostsMapper
 {
     public static JobIndexPostResponse ToDto(JobIndexPosts model)
     {
-        var banner = WebPConverter.ConvertToWebP(model.BannerPicture);
-        var footer = WebPConverter.ConvertToWebP(model.FooterPicture);
-
         return new JobIndexPostResponse(
             model.JobID,
             model.JobTitle ?? string.Empty,
             model.CompanyName ?? string.Empty,
             model.JobLocation,
             model.JobUrl ?? string.Empty,
-            model.Published ?? DateTime.MinValue,
-            model.Categories.FirstOrDefault()?.Name,
+            model.Published,
+            model.Categories
+                .Select(c => new JobPostCategoryResponse(c.CategoryId, c.CategoryKey, c.CategoryName, c.ListingUrl, c.IsActive))
+                .ToList(),
             string.IsNullOrWhiteSpace(model.JobDescription) ? null : model.JobDescription,
             model.CompanyURL,
-            banner.bytes,
-            footer.bytes,
-            banner.format,
-            footer.format,
-            banner.mimeType,
-            footer.mimeType
+            model.BannerImageUrl,
+            model.FooterImageUrl
         );
     }
 

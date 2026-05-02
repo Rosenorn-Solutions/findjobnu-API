@@ -22,7 +22,7 @@ namespace FindjobnuService.Services
             bool enabled,
             JobAgentFrequency frequency,
             IEnumerable<string>? preferredLocations,
-            IEnumerable<int>? preferredCategoryIds,
+            IEnumerable<string>? preferredCategoryKeys,
             IEnumerable<string>? includeKeywords)
         {
             var profile = await _db.Profiles.Include(p => p.JobAgent).FirstOrDefaultAsync(p => p.Id == profileId);
@@ -40,7 +40,7 @@ namespace FindjobnuService.Services
                     NextSendAt = ComputeNext(now, frequency),
                     UnsubscribeToken = GenerateToken(),
                     PreferredLocations = NormalizeStrings(preferredLocations),
-                    PreferredCategoryIds = NormalizeInts(preferredCategoryIds),
+                    PreferredCategoryKeys = NormalizeStrings(preferredCategoryKeys),
                     IncludeKeywords = NormalizeStrings(includeKeywords)
                 };
                 _db.JobAgents.Add(profile.JobAgent);
@@ -51,7 +51,7 @@ namespace FindjobnuService.Services
                 profile.JobAgent.Frequency = frequency;
                 profile.JobAgent.UpdatedAt = now;
                 profile.JobAgent.PreferredLocations = NormalizeStrings(preferredLocations);
-                profile.JobAgent.PreferredCategoryIds = NormalizeInts(preferredCategoryIds);
+                profile.JobAgent.PreferredCategoryKeys = NormalizeStrings(preferredCategoryKeys);
                 profile.JobAgent.IncludeKeywords = NormalizeStrings(includeKeywords);
                 if (enabled && profile.JobAgent.NextSendAt == null)
                 {
@@ -73,13 +73,13 @@ namespace FindjobnuService.Services
             return await _db.JobAgents.AsNoTracking().FirstOrDefaultAsync(x => x.ProfileId == profileId);
         }
 
-        public async Task<IEnumerable<Category>> GetCategoriesByIdsAsync(IEnumerable<int> categoryIds)
+        public async Task<IEnumerable<Category>> GetCategoriesByKeysAsync(IEnumerable<string> categoryKeys)
         {
-            if (categoryIds == null || !categoryIds.Any())
+            if (categoryKeys == null || !categoryKeys.Any())
                 return Enumerable.Empty<Category>();
 
             return await _db.Categories
-                .Where(c => categoryIds.Contains(c.CategoryID))
+                .Where(c => categoryKeys.Contains(c.CategoryKey))
                 .AsNoTracking()
                 .ToListAsync();
         }
@@ -134,15 +134,6 @@ namespace FindjobnuService.Services
                 .Select(v => v.Trim())
                 .Where(v => v.Length <= 200)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
-        }
-
-        private static List<int> NormalizeInts(IEnumerable<int>? values)
-        {
-            if (values == null) return new List<int>();
-            return values
-                .Where(v => v > 0)
-                .Distinct()
                 .ToList();
         }
     }

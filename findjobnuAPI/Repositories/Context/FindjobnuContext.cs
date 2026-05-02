@@ -10,6 +10,10 @@ namespace FindjobnuService.Repositories.Context
 {
     public class FindjobnuContext(DbContextOptions<FindjobnuContext> options) : DbContext(options)
     {
+        public DbSet<Job> Jobs { get; set; }
+        public DbSet<JobSnapshot> JobSnapshots { get; set; }
+        public DbSet<JobImage> JobImages { get; set; }
+        public DbSet<JobCategory> JobCategories { get; set; }
         public DbSet<JobIndexPosts> JobIndexPosts { get; set; }
         public DbSet<Category> Categories { get; set; }
         public DbSet<City> Cities { get; set; }
@@ -29,8 +33,92 @@ namespace FindjobnuService.Repositories.Context
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
-            modelBuilder.Entity<JobIndexPosts>().ToTable("JobIndexPostingsExtended").HasKey(s => s.JobID);
-            modelBuilder.Entity<JobIndexPosts>().HasIndex(s => s.JobUrl).IsUnique();
+            modelBuilder.Entity<Job>(entity =>
+            {
+                entity.ToTable("jobs");
+                entity.HasKey(j => j.JobId);
+                entity.HasIndex(j => j.CanonicalJobUrl).IsUnique();
+                entity.HasOne(j => j.CurrentSnapshot)
+                    .WithMany()
+                    .HasForeignKey(j => j.CurrentSnapshotId)
+                    .OnDelete(DeleteBehavior.NoAction);
+            });
+
+            modelBuilder.Entity<JobSnapshot>(entity =>
+            {
+                entity.ToTable("job_snapshots");
+                entity.HasKey(s => s.JobSnapshotId);
+                entity.HasOne(s => s.Job)
+                    .WithMany(j => j.Snapshots)
+                    .HasForeignKey(s => s.JobId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(s => s.BannerImage)
+                    .WithMany()
+                    .HasForeignKey(s => s.BannerImageId)
+                    .OnDelete(DeleteBehavior.NoAction);
+                entity.HasOne(s => s.FooterImage)
+                    .WithMany()
+                    .HasForeignKey(s => s.FooterImageId)
+                    .OnDelete(DeleteBehavior.NoAction);
+            });
+
+            modelBuilder.Entity<JobImage>(entity =>
+            {
+                entity.ToTable("job_images");
+                entity.HasKey(i => i.JobImageId);
+                entity.HasOne(i => i.Job)
+                    .WithMany(j => j.Images)
+                    .HasForeignKey(i => i.JobId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<Category>(entity =>
+            {
+                entity.ToTable("categories");
+                entity.HasKey(c => c.CategoryId);
+                entity.HasIndex(c => c.CategoryKey).IsUnique();
+            });
+
+            modelBuilder.Entity<JobCategory>(entity =>
+            {
+                entity.ToTable("job_categories");
+                entity.HasKey(jc => new { jc.JobId, jc.CategoryId });
+                entity.HasOne(jc => jc.Job)
+                    .WithMany(j => j.JobCategories)
+                    .HasForeignKey(jc => jc.JobId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(jc => jc.Category)
+                    .WithMany(c => c.JobCategories)
+                    .HasForeignKey(jc => jc.CategoryId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<JobKeyword>(entity =>
+            {
+                entity.ToTable("job_keywords");
+                entity.HasKey(k => k.JobKeywordId);
+                entity.HasOne(k => k.JobSnapshot)
+                    .WithMany(s => s.Keywords)
+                    .HasForeignKey(k => k.JobSnapshotId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<JobIndexPosts>(entity =>
+            {
+                entity.ToTable("JobIndexPostingsExtended");
+                entity.HasKey(j => j.JobID);
+                entity.HasMany(j => j.Categories)
+                    .WithMany()
+                    .UsingEntity<Dictionary<string, object>>(
+                        "LegacyJobIndexPostCategories",
+                        right => right.HasOne<Category>().WithMany().HasForeignKey("CategoryId"),
+                        left => left.HasOne<JobIndexPosts>().WithMany().HasForeignKey("JobId"),
+                        join =>
+                        {
+                            join.HasKey("JobId", "CategoryId");
+                            join.ToTable("LegacyJobIndexPostCategories");
+                        });
+            });
 
             modelBuilder.Entity<City>(entity =>
             {
@@ -90,16 +178,6 @@ namespace FindjobnuService.Repositories.Context
                 c => c == null ? 0 : c.Aggregate(0, (a, v) => HashCode.Combine(a, v != null ? v.GetHashCode() : 0)),
                 c => c == null ? null : c.ToList()
             );
-            var intListConverter = new ValueConverter<List<int>?, string?>(
-                v => v == null ? null : string.Join(',', v),
-                v => ConvertDelimitedStringToIntList(v)
-            );
-            var intListComparer = new ValueComparer<List<int>?>(
-                (c1, c2) => (c1 == null && c2 == null) || (c1 != null && c2 != null && c1.SequenceEqual(c2)),
-                c => c == null ? 0 : c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
-                c => c == null ? null : c.ToList()
-            );
-
             modelBuilder.Entity<Profile>()
                 .Property(p => p.Keywords)
                 .HasConversion(keywordsConverter)
@@ -116,24 +194,9 @@ namespace FindjobnuService.Repositories.Context
                 .Metadata.SetValueComparer(keywordsComparer);
 
             modelBuilder.Entity<JobAgent>()
-                .Property(j => j.PreferredCategoryIds)
-                .HasConversion(intListConverter)
-                .Metadata.SetValueComparer(intListComparer);
-
-            // Many-to-many: JobIndexPosts <-> Category
-            modelBuilder.Entity<JobIndexPosts>()
-                .HasMany(j => j.Categories)
-                .WithMany(c => c.JobIndexPosts)
-                .UsingEntity<Dictionary<string, object>>(
-                    "JobCategories",
-                    j => j.HasOne<Category>().WithMany().HasForeignKey("CategoryID").HasPrincipalKey("CategoryID").OnDelete(DeleteBehavior.Cascade),
-                    c => c.HasOne<JobIndexPosts>().WithMany().HasForeignKey("JobID").HasPrincipalKey("JobID").OnDelete(DeleteBehavior.Cascade),
-                    je =>
-                    {
-                        je.HasKey("JobID", "CategoryID");
-                        je.ToTable("JobCategories");
-                    }
-                );
+                .Property(j => j.PreferredCategoryKeys)
+                .HasConversion(keywordsConverter)
+                .Metadata.SetValueComparer(keywordsComparer);
 
             // Profile relationships
             modelBuilder.Entity<Profile>()
@@ -172,23 +235,5 @@ namespace FindjobnuService.Repositories.Context
                 .OnDelete(DeleteBehavior.Cascade);
         }
 
-        private static List<int> ConvertDelimitedStringToIntList(string? value)
-        {
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                return new List<int>();
-            }
-
-            var results = new List<int>();
-            foreach (var segment in value.Split(',', StringSplitOptions.RemoveEmptyEntries))
-            {
-                if (int.TryParse(segment.Trim(), out var parsed))
-                {
-                    results.Add(parsed);
-                }
-            }
-
-            return results;
-        }
     }
 }

@@ -7,7 +7,7 @@ GO
  * 
  * Prerequisites:
  * - Database FindjobnuDB must exist
- * - Tables JobIndexPostingsExtended, JobKeywords, JobCategories must exist
+ * - Tables jobs, job_snapshots, job_keywords, job_categories, categories must exist
  * - Full-Text Search feature must be installed on SQL Server
  * 
  * After running this script:
@@ -47,7 +47,7 @@ PRINT '';
 PRINT '=== Deployment Complete ===';
 PRINT '';
 PRINT 'Next steps:';
-PRINT '1. Verify indexes exist: SELECT * FROM sys.indexes WHERE object_id = OBJECT_ID(''dbo.JobIndexPostingsExtended'')';
+PRINT '1. Verify indexes exist on jobs/job_snapshots/job_categories/categories/job_keywords';
 PRINT '2. Verify stored procedures exist: SELECT * FROM sys.procedures WHERE name LIKE ''usp_%Jobs''';
 PRINT '3. Enable stored procedures in code: Set UseStoredProcedures = true in JobIndexPostsService';
 PRINT '4. Monitor performance with Query Store or Extended Events';
@@ -77,7 +77,7 @@ GO
  * FROM sys.indexes i
  * LEFT JOIN sys.dm_db_index_usage_stats ius 
  *     ON i.object_id = ius.object_id AND i.index_id = ius.index_id
- * WHERE OBJECT_NAME(i.object_id) IN ('JobIndexPostingsExtended', 'JobCategories', 'JobKeywords')
+ * WHERE OBJECT_NAME(i.object_id) IN ('jobs', 'job_snapshots', 'job_categories', 'categories', 'job_keywords')
  * ORDER BY TableName, IndexName;
  * 
  * -- Check stored procedure execution stats:

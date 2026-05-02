@@ -27,7 +27,8 @@ public class JobIndexPostsMapperTests
         Assert.Equal(model.JobLocation, dto.Location);
         Assert.Equal(model.JobUrl, dto.JobUrl);
         Assert.Equal(model.Published, dto.PostedDate);
-        Assert.Equal("IT", dto.Category);
+        Assert.Single(dto.Categories);
+        Assert.Equal("IT", dto.Categories[0].CategoryName);
     }
 
     [Fact]

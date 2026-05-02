@@ -22,68 +22,68 @@ BEGIN
 END
 GO
 
--- Unique key for CONTAINSTABLE queries on JobIndexPostingsExtended
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'UX_JobIndexPostingsExtended_FT' AND object_id = OBJECT_ID('dbo.JobIndexPostingsExtended'))
+-- Unique key for CONTAINSTABLE queries on job_snapshots
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'UX_job_snapshots_FT' AND object_id = OBJECT_ID('dbo.job_snapshots'))
 BEGIN
-    CREATE UNIQUE NONCLUSTERED INDEX UX_JobIndexPostingsExtended_FT ON dbo.JobIndexPostingsExtended(JobID);
+    CREATE UNIQUE NONCLUSTERED INDEX UX_job_snapshots_FT ON dbo.job_snapshots(job_snapshot_id);
 END
 GO
 
--- Unique key for CONTAINSTABLE queries on JobKeywords
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'UX_JobKeywords_FT' AND object_id = OBJECT_ID('dbo.JobKeywords'))
+-- Unique key for CONTAINSTABLE queries on job_keywords
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'UX_job_keywords_FT' AND object_id = OBJECT_ID('dbo.job_keywords'))
 BEGIN
-    CREATE UNIQUE NONCLUSTERED INDEX UX_JobKeywords_FT ON dbo.JobKeywords(KeywordID);
+    CREATE UNIQUE NONCLUSTERED INDEX UX_job_keywords_FT ON dbo.job_keywords(job_keyword_id);
 END
 GO
 
--- Recreate the full-text index on JobIndexPostingsExtended (JobIndexPostsService.SearchAsync & GetRecommendedJobsByUserAndProfile)
-IF EXISTS (SELECT 1 FROM sys.fulltext_indexes WHERE object_id = OBJECT_ID('dbo.JobIndexPostingsExtended'))
+-- Recreate the full-text index on job_snapshots normalized current-search fields
+IF EXISTS (SELECT 1 FROM sys.fulltext_indexes WHERE object_id = OBJECT_ID('dbo.job_snapshots'))
 BEGIN
-    DROP FULLTEXT INDEX ON dbo.JobIndexPostingsExtended;
+    DROP FULLTEXT INDEX ON dbo.job_snapshots;
 END
 GO
 
-CREATE FULLTEXT INDEX ON dbo.JobIndexPostingsExtended
+CREATE FULLTEXT INDEX ON dbo.job_snapshots
 (
-    JobTitle LANGUAGE 1033,
-    JobDescription LANGUAGE 1033,
-    CompanyName LANGUAGE 1033,
-    JobLocation LANGUAGE 1033
+    job_title_normalized LANGUAGE 1033,
+    job_description_clean LANGUAGE 1033,
+    company_name_normalized LANGUAGE 1033,
+    location_normalized LANGUAGE 1033
 )
-KEY INDEX UX_JobIndexPostingsExtended_FT
+KEY INDEX UX_job_snapshots_FT
 ON FTCatalog_JobIndex
 WITH CHANGE_TRACKING AUTO, STOPLIST = SYSTEM;
 GO
 
--- Recreate the full-text index backing JobKeywords lookups
-IF EXISTS (SELECT 1 FROM sys.fulltext_indexes WHERE object_id = OBJECT_ID('dbo.JobKeywords'))
+-- Recreate the full-text index backing current-snapshot keyword lookups
+IF EXISTS (SELECT 1 FROM sys.fulltext_indexes WHERE object_id = OBJECT_ID('dbo.job_keywords'))
 BEGIN
-    DROP FULLTEXT INDEX ON dbo.JobKeywords;
+    DROP FULLTEXT INDEX ON dbo.job_keywords;
 END
 GO
 
-CREATE FULLTEXT INDEX ON dbo.JobKeywords
+CREATE FULLTEXT INDEX ON dbo.job_keywords
 (
-    Keyword LANGUAGE 1033
+    keyword LANGUAGE 1033
 )
-KEY INDEX UX_JobKeywords_FT
+KEY INDEX UX_job_keywords_FT
 ON FTCatalog_JobIndex
 WITH CHANGE_TRACKING AUTO, STOPLIST = SYSTEM;
 GO
 
 -- Supporting nonclustered indexes used by filtering/pagination paths
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_JobIndexPostingsExtended_Published' AND object_id = OBJECT_ID('dbo.JobIndexPostingsExtended'))
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_job_snapshots_published_utc' AND object_id = OBJECT_ID('dbo.job_snapshots'))
 BEGIN
-    CREATE NONCLUSTERED INDEX IX_JobIndexPostingsExtended_Published
-        ON dbo.JobIndexPostingsExtended(Published DESC)
-        INCLUDE (JobTitle, JobLocation, CompanyName);
+    CREATE NONCLUSTERED INDEX IX_job_snapshots_published_utc
+        ON dbo.job_snapshots(published_utc DESC, job_id)
+        INCLUDE (job_title_normalized, location_normalized, company_name_normalized);
 END
 GO
 
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_JobKeywords_JobID' AND object_id = OBJECT_ID('dbo.JobKeywords'))
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_job_keywords_job_snapshot_id' AND object_id = OBJECT_ID('dbo.job_keywords'))
 BEGIN
-    CREATE NONCLUSTERED INDEX IX_JobKeywords_JobID ON dbo.JobKeywords(JobID) INCLUDE (Keyword);
+    CREATE NONCLUSTERED INDEX IX_job_keywords_job_snapshot_id ON dbo.job_keywords(job_snapshot_id) INCLUDE (keyword);
 END
 GO
 
-PRINT 'Full-text catalog and indexes for JobIndexPostingsExtended and JobKeywords are now configured.';
+PRINT 'Full-text catalog and indexes for job_snapshots and job_keywords are now configured.';

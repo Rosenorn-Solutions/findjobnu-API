@@ -6,7 +6,7 @@ using System.ComponentModel.DataAnnotations;
 public record RecommendedJobsRequest(
     [property: FromQuery(Name = "SearchTerms")] string[]? SearchTerms,
     [property: FromQuery(Name = "Locations")] string[]? Locations,
-    [property: FromQuery(Name = "CategoryIds")] int[]? CategoryIds,
+    [property: FromQuery(Name = "CategoryKeys")] string[]? CategoryKeys,
     [property: FromQuery] DateTime? PostedAfter,
     [property: FromQuery] DateTime? PostedBefore,
     [property: FromQuery, Range(1, int.MaxValue)] int Page = 1,

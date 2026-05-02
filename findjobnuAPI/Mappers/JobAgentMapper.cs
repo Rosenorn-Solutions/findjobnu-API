@@ -11,12 +11,12 @@ namespace FindjobnuService.Mappers
                 return null;
 
             var categoryNames = new List<string>();
-            if (categories != null && agent.PreferredCategoryIds != null)
+            if (categories != null && agent.PreferredCategoryKeys != null)
             {
-                var categoryDict = categories.ToDictionary(c => c.CategoryID, c => c.Name);
-                categoryNames = agent.PreferredCategoryIds
-                    .Where(id => categoryDict.ContainsKey(id))
-                    .Select(id => categoryDict[id])
+                var categoryDict = categories.ToDictionary(c => c.CategoryKey, c => c.CategoryName, StringComparer.OrdinalIgnoreCase);
+                categoryNames = agent.PreferredCategoryKeys
+                    .Where(key => categoryDict.ContainsKey(key))
+                    .Select(key => categoryDict[key])
                     .ToList();
             }
 
@@ -31,7 +31,7 @@ namespace FindjobnuService.Mappers
                 CreatedAt = agent.CreatedAt,
                 UpdatedAt = agent.UpdatedAt,
                 PreferredLocations = agent.PreferredLocations ?? new List<string>(),
-                PreferredCategoryIds = agent.PreferredCategoryIds ?? new List<int>(),
+                PreferredCategoryKeys = agent.PreferredCategoryKeys ?? new List<string>(),
                 PreferredCategoryNames = categoryNames,
                 IncludeKeywords = agent.IncludeKeywords ?? new List<string>()
             };

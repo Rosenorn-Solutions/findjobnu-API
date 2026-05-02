@@ -41,7 +41,7 @@ namespace FindjobnuService.Models
 
         // Optional filters applied after base recommendations are built
         public List<string>? PreferredLocations { get; set; } = new();
-        public List<int>? PreferredCategoryIds { get; set; } = new();
+        public List<string>? PreferredCategoryKeys { get; set; } = new();
         public List<string>? IncludeKeywords { get; set; } = new();
     }
 }

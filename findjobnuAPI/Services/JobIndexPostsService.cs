@@ -64,19 +64,32 @@ namespace FindjobnuService.Services
             if (page < 1) page = 1;
             if (pageSize < 1) pageSize = 10;
 
-            var totalCount = await _db.JobIndexPosts.CountAsync();
-            var items = await _db.JobIndexPosts
-                .Include(j => j.Categories)
-                .OrderBy(j => j.JobID)
+            if (await ShouldUseLegacyInMemoryJobsAsync())
+            {
+                var legacyTotalCount = await _db.JobIndexPosts.CountAsync();
+                var legacyItems = await _db.JobIndexPosts
+                    .Include(j => j.Categories)
+                    .OrderByDescending(j => j.Published)
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
+                    .AsNoTracking()
+                    .ToListAsync();
+
+                return new PagedList<JobIndexPosts>(legacyTotalCount, pageSize, page, legacyItems);
+            }
+
+            var query = BuildCurrentJobsQuery();
+            var totalCount = await query.CountAsync();
+            var items = await query
+                .OrderByDescending(j => j.Published)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
-                .AsNoTracking()
                 .ToListAsync();
 
             return new PagedList<JobIndexPosts>(totalCount, pageSize, page, items);
         }
 
-        public async Task<PagedList<JobIndexPosts>> SearchAsync(string[]? searchTerms, string[]? locations, int[]? categoryIds, DateTime? postedAfter, DateTime? postedBefore, int page, int pageSize)
+        public async Task<PagedList<JobIndexPosts>> SearchAsync(string[]? searchTerms, string[]? locations, string[]? categoryKeys, DateTime? postedAfter, DateTime? postedBefore, int page, int pageSize)
         {
             if (page < 1) page = 1;
             if (pageSize < 1) pageSize = 20;
@@ -98,8 +111,9 @@ namespace FindjobnuService.Services
                 .ToList();
 
             // Normalize category IDs
-            var normalizedCategoryIds = categoryIds?
-                .Where(id => id > 0)
+            var normalizedCategoryKeys = categoryKeys?
+                .Where(key => !string.IsNullOrWhiteSpace(key))
+                .Select(key => key.Trim())
                 .Distinct()
                 .ToList();
 
@@ -108,7 +122,7 @@ namespace FindjobnuService.Services
                 "search",
                 normalizedSearchTerms,
                 locationTokens,
-                normalizedCategoryIds,
+                normalizedCategoryKeys,
                 postedAfter,
                 postedBefore,
                 page,
@@ -123,7 +137,7 @@ namespace FindjobnuService.Services
 
             bool hasSearchTerms = normalizedSearchTerms != null && normalizedSearchTerms.Count > 0;
             bool hasFilters = (locationTokens != null && locationTokens.Count > 0) ||
-                              (normalizedCategoryIds != null && normalizedCategoryIds.Count > 0) ||
+                              (normalizedCategoryKeys != null && normalizedCategoryKeys.Count > 0) ||
                               postedAfter.HasValue || postedBefore.HasValue;
 
             if (_db.Database.IsSqlServer())
@@ -134,7 +148,7 @@ namespace FindjobnuService.Services
                     result = await ExecuteSqlServerSearchAsync(
                         normalizedSearchTerms!,
                         locationTokens,
-                        normalizedCategoryIds,
+                        normalizedCategoryKeys,
                         postedAfter,
                         postedBefore,
                         page,
@@ -145,7 +159,7 @@ namespace FindjobnuService.Services
                     // Filter-only search (no full-text) - use EF Core query
                     result = await ExecuteSqlServerFilterOnlyAsync(
                         locationTokens,
-                        normalizedCategoryIds,
+                        normalizedCategoryKeys,
                         postedAfter,
                         postedBefore,
                         page,
@@ -163,7 +177,7 @@ namespace FindjobnuService.Services
                 result = await ExecuteInMemorySearchAsync(
                     normalizedSearchTerms,
                     locationTokens,
-                    normalizedCategoryIds,
+                    normalizedCategoryKeys,
                     postedAfter,
                     postedBefore,
                     page,
@@ -184,16 +198,13 @@ namespace FindjobnuService.Services
         /// </summary>
         private async Task<PagedList<JobIndexPosts>> ExecuteSqlServerFilterOnlyAsync(
             List<string?>? locationTokens,
-            List<int>? categoryIds,
+            List<string>? categoryKeys,
             DateTime? postedAfter,
             DateTime? postedBefore,
             int page,
             int pageSize)
         {
-            var query = _db.JobIndexPosts
-                .Include(j => j.Categories)
-                .AsNoTracking()
-                .AsQueryable();
+            var query = BuildCurrentJobsQuery();
 
             // Apply date filters
             if (postedAfter.HasValue)
@@ -215,10 +226,10 @@ namespace FindjobnuService.Services
             }
 
             // Apply category filter (OR logic)
-            if (categoryIds != null && categoryIds.Count > 0)
+            if (categoryKeys != null && categoryKeys.Count > 0)
             {
                 query = query.Where(j =>
-                    j.Categories.Any(c => categoryIds.Contains(c.CategoryID)));
+                    j.Categories.Any(c => categoryKeys.Contains(c.CategoryKey)));
             }
 
             // Get total count
@@ -246,7 +257,7 @@ namespace FindjobnuService.Services
         private async Task<PagedList<JobIndexPosts>> ExecuteSqlServerSearchAsync(
             List<string> searchTerms,
             List<string?>? locationTokens,
-            List<int>? categoryIds,
+            List<string>? categoryKeys,
             DateTime? postedAfter,
             DateTime? postedBefore,
             int page,
@@ -257,7 +268,7 @@ namespace FindjobnuService.Services
                 .WithPagination(page, pageSize)
                 .WithDateRange(postedAfter, postedBefore)
                 .WithLocations(locationTokens)
-                .WithCategories(categoryIds);
+                .WithCategories(categoryKeys);
 
             if (UseStoredProcedures)
             {
@@ -270,9 +281,10 @@ namespace FindjobnuService.Services
             // Execute single query that returns both data and count
             var rawResults = await _db.JobIndexPosts
                 .FromSqlRaw(sql, parameters)
-                .Include(j => j.Categories)
                 .AsNoTracking()
                 .ToListAsync();
+
+            await PopulateCategoriesAsync(rawResults);
 
             // Execute count query only if we have results
             int totalCount = 0;
@@ -305,20 +317,7 @@ namespace FindjobnuService.Services
             // Load categories separately for the returned jobs
             if (items.Count > 0)
             {
-                var jobIds = items.Select(j => j.JobID).ToList();
-                var jobCategories = await _db.JobIndexPosts
-                    .Where(j => jobIds.Contains(j.JobID))
-                    .Include(j => j.Categories)
-                    .AsNoTracking()
-                    .ToDictionaryAsync(j => j.JobID, j => j.Categories);
-
-                foreach (var job in items)
-                {
-                    if (jobCategories.TryGetValue(job.JobID, out var categories))
-                    {
-                        job.Categories = categories;
-                    }
-                }
+                await PopulateCategoriesAsync(items);
             }
 
             // Get total count from output parameter
@@ -341,15 +340,17 @@ SELECT COUNT(*) AS Value
 FROM (
     SELECT r.JobID
     FROM (
-        SELECT t.[KEY] AS JobID
-        FROM CONTAINSTABLE(dbo.JobIndexPostingsExtended, (JobTitle, JobDescription, CompanyName, JobLocation), @ftQuery, {queryBuilder.MainTableTopN}) t
+        SELECT s.job_id AS JobID
+        FROM CONTAINSTABLE(dbo.job_snapshots, (job_title_normalized, job_description_clean, company_name_normalized, location_normalized), @ftQuery, {queryBuilder.MainTableTopN}) t
+        JOIN dbo.job_snapshots s ON s.job_snapshot_id = t.[KEY]
         UNION
-        SELECT j.JobID
-        FROM CONTAINSTABLE(dbo.JobKeywords, Keyword, @ftQuery, {queryBuilder.KeywordsTableTopN}) tk
-        JOIN dbo.JobKeywords k ON k.KeywordID = tk.[KEY]
-        JOIN dbo.JobIndexPostingsExtended j ON j.JobID = k.JobID
+        SELECT s.job_id
+        FROM CONTAINSTABLE(dbo.job_keywords, keyword, @ftQuery, {queryBuilder.KeywordsTableTopN}) tk
+        JOIN dbo.job_keywords k ON k.job_keyword_id = tk.[KEY]
+        JOIN dbo.job_snapshots s ON s.job_snapshot_id = k.job_snapshot_id
     ) r
-    JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
+    JOIN dbo.jobs j ON j.job_id = r.JobID
+    JOIN dbo.job_snapshots s ON s.job_snapshot_id = j.current_snapshot_id
     {whereClause}
     GROUP BY r.JobID
 ) counted";
@@ -365,15 +366,20 @@ FROM (
         private async Task<PagedList<JobIndexPosts>> ExecuteInMemorySearchAsync(
             List<string>? searchTerms,
             List<string?>? locationTokens,
-            List<int>? categoryIds,
+            List<string>? categoryKeys,
             DateTime? postedAfter,
             DateTime? postedBefore,
             int page,
             int pageSize)
         {
+            if (await ShouldUseLegacyInMemoryJobsAsync())
+            {
+                return await ExecuteLegacyInMemorySearchAsync(searchTerms, locationTokens, categoryKeys, postedAfter, postedBefore, page, pageSize);
+            }
+
             // For InMemory/non-SQL Server: load data first then filter in memory
-            var jobs = await _db.JobIndexPosts.Include(j => j.Categories).AsNoTracking().ToListAsync();
-            var jobKeywords = await _db.JobKeywords.AsNoTracking().ToListAsync();
+            var jobs = await BuildCurrentJobsQuery().ToListAsync();
+            var jobKeywords = await GetCurrentSnapshotKeywordsQuery().ToListAsync();
 
             IEnumerable<JobIndexPosts> filteredJobs = jobs;
 
@@ -396,10 +402,10 @@ FROM (
             }
 
             // Multiple categories with OR logic
-            if (categoryIds != null && categoryIds.Count > 0)
+            if (categoryKeys != null && categoryKeys.Count > 0)
             {
                 filteredJobs = filteredJobs.Where(j =>
-                    j.Categories != null && j.Categories.Any(c => categoryIds.Contains(c.CategoryID)));
+                    j.Categories != null && j.Categories.Any(c => categoryKeys.Contains(c.CategoryKey)));
             }
 
             // Multiple search terms with OR logic
@@ -410,7 +416,7 @@ FROM (
                     (j.JobTitle != null && terms.Any(term => j.JobTitle.ToLower().Contains(term))) ||
                     (j.CompanyName != null && terms.Any(term => j.CompanyName.ToLower().Contains(term))) ||
                     (j.JobDescription != null && terms.Any(term => j.JobDescription.ToLower().Contains(term))) ||
-                    jobKeywords.Any(k => k.JobID == j.JobID && k.Keyword != null && terms.Any(term => k.Keyword.ToLower().Contains(term)))
+                    jobKeywords.Any(k => k.JobId == j.JobID && k.Keyword != null && terms.Any(term => k.Keyword.ToLower().Contains(term)))
                 );
             }
 
@@ -431,11 +437,17 @@ FROM (
             return new PagedList<JobIndexPosts>(total, pageSize, page, items);
         }
 
-        public async Task<JobIndexPosts> GetByIdAsync(int id)
+        public async Task<JobIndexPosts> GetByIdAsync(long id)
         {
-            return await _db.JobIndexPosts
-                .Include(j => j.Categories)
-                .AsNoTracking()
+            if (await ShouldUseLegacyInMemoryJobsAsync())
+            {
+                return await _db.JobIndexPosts
+                    .Include(j => j.Categories)
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(j => j.JobID == id) ?? new JobIndexPosts();
+            }
+
+            return await BuildCurrentJobsQuery()
                 .FirstOrDefaultAsync(j => j.JobID == id) ?? new JobIndexPosts();
         }
 
@@ -443,19 +455,39 @@ FROM (
         {
             try
             {
+                if (await ShouldUseLegacyInMemoryJobsAsync())
+                {
+                    var legacyJobs = await _db.JobIndexPosts.Include(j => j.Categories).AsNoTracking().ToListAsync();
+                    var legacyCategoryJobCounts = legacyJobs
+                        .SelectMany(j => j.Categories)
+                        .GroupBy(c => c.CategoryId)
+                        .Select(g =>
+                        {
+                            var category = g.First();
+                            return new CategoryJobCountResponse(category.CategoryId, category.CategoryKey, category.CategoryName, category.ListingUrl, category.IsActive, g.Count());
+                        })
+                        .OrderBy(c => c.CategoryName)
+                        .ToList();
+
+                    return new CategoriesResponse(true, null, legacyCategoryJobCounts);
+                }
+
                 var rawCategoryData = await _db.Categories
                     .AsNoTracking()
                     .Select(c => new
                     {
-                        c.CategoryID,
-                        c.Name,
-                        NumberOfJobs = c.JobIndexPosts.Count
+                        c.CategoryId,
+                        c.CategoryKey,
+                        c.CategoryName,
+                        c.ListingUrl,
+                        c.IsActive,
+                        NumberOfJobs = c.JobCategories.Count(jc => jc.Job.IsActive && jc.Job.CurrentSnapshotId != null)
                     })
-                    .OrderBy(x => x.Name)
+                    .OrderBy(x => x.CategoryName)
                     .ToListAsync();
 
                 var categoryJobCounts = rawCategoryData
-                    .Select(x => new CategoryJobCountResponse(x.CategoryID, x.Name, x.NumberOfJobs))
+                    .Select(x => new CategoryJobCountResponse(x.CategoryId, x.CategoryKey, x.CategoryName, x.ListingUrl, x.IsActive, x.NumberOfJobs))
                     .ToList();
 
                 return new CategoriesResponse(true, null, categoryJobCounts);
@@ -473,35 +505,79 @@ FROM (
             var weekAgo = now.AddDays(-7);
             var monthAgo = now.AddMonths(-1);
 
-            var totalJobs = await _db.JobIndexPosts.CountAsync();
-            var newJobsLastWeek = await _db.JobIndexPosts.CountAsync(j => j.Published >= weekAgo);
-            var newJobsLastMonth = await _db.JobIndexPosts.CountAsync(j => j.Published >= monthAgo);
+            if (await ShouldUseLegacyInMemoryJobsAsync())
+            {
+                var jobs = await _db.JobIndexPosts.Include(j => j.Categories).AsNoTracking().ToListAsync();
+                var totalJobsLegacy = jobs.Count;
+                var newJobsLastWeekLegacy = jobs.Count(j => j.Published >= weekAgo);
+                var newJobsLastMonthLegacy = jobs.Count(j => j.Published >= monthAgo);
+
+                var topCategoriesLegacy = jobs
+                    .SelectMany(j => j.Categories)
+                    .GroupBy(c => c.CategoryId)
+                    .Select(g =>
+                    {
+                        var category = g.First();
+                        return new CategoryJobCountResponse(category.CategoryId, category.CategoryKey, category.CategoryName, category.ListingUrl, category.IsActive, g.Count());
+                    })
+                    .OrderByDescending(c => c.NumberOfJobs)
+                    .ThenBy(c => c.CategoryName)
+                    .Take(10)
+                    .ToList();
+
+                var topCategoriesLastWeekLegacy = jobs
+                    .Where(j => j.Published >= weekAgo)
+                    .SelectMany(j => j.Categories)
+                    .GroupBy(c => c.CategoryId)
+                    .Select(g =>
+                    {
+                        var category = g.First();
+                        return new CategoryJobCountResponse(category.CategoryId, category.CategoryKey, category.CategoryName, category.ListingUrl, category.IsActive, g.Count());
+                    })
+                    .OrderByDescending(c => c.NumberOfJobs)
+                    .ThenBy(c => c.CategoryName)
+                    .Take(5)
+                    .ToList();
+
+                return new JobStatisticsResponse(topCategoriesLegacy, topCategoriesLastWeekLegacy, totalJobsLegacy, newJobsLastWeekLegacy, newJobsLastMonthLegacy);
+            }
+
+            var activeJobs = _db.Jobs.Where(j => j.IsActive && j.CurrentSnapshotId != null);
+            var totalJobs = await activeJobs.CountAsync();
+            var newJobsLastWeek = await activeJobs.CountAsync(j => j.CurrentSnapshot != null && j.CurrentSnapshot.PublishedUtc >= weekAgo);
+            var newJobsLastMonth = await activeJobs.CountAsync(j => j.CurrentSnapshot != null && j.CurrentSnapshot.PublishedUtc >= monthAgo);
 
             var topCategories = await _db.Categories
                 .Select(c => new
                 {
-                    c.CategoryID,
-                    c.Name,
-                    NumberOfJobs = c.JobIndexPosts.Count
+                    c.CategoryId,
+                    c.CategoryKey,
+                    c.CategoryName,
+                    c.ListingUrl,
+                    c.IsActive,
+                    NumberOfJobs = c.JobCategories.Count(jc => jc.Job.IsActive && jc.Job.CurrentSnapshotId != null)
                 })
                 .OrderByDescending(c => c.NumberOfJobs)
-                .ThenBy(c => c.Name)
+                .ThenBy(c => c.CategoryName)
                 .Take(10)
-                .Select(c => new CategoryJobCountResponse(c.CategoryID, c.Name, c.NumberOfJobs))
+                .Select(c => new CategoryJobCountResponse(c.CategoryId, c.CategoryKey, c.CategoryName, c.ListingUrl, c.IsActive, c.NumberOfJobs))
                 .ToListAsync();
 
             var topCategoriesLastWeek = await _db.Categories
                 .Select(c => new
                 {
-                    c.CategoryID,
-                    c.Name,
-                    NumberOfJobs = c.JobIndexPosts.Count(j => j.Published >= weekAgo)
+                    c.CategoryId,
+                    c.CategoryKey,
+                    c.CategoryName,
+                    c.ListingUrl,
+                    c.IsActive,
+                    NumberOfJobs = c.JobCategories.Count(jc => jc.Job.IsActive && jc.Job.CurrentSnapshotId != null && jc.Job.CurrentSnapshot != null && jc.Job.CurrentSnapshot.PublishedUtc >= weekAgo)
                 })
                 .Where(c => c.NumberOfJobs > 0)
                 .OrderByDescending(c => c.NumberOfJobs)
-                .ThenBy(c => c.Name)
+                .ThenBy(c => c.CategoryName)
                 .Take(5)
-                .Select(c => new CategoryJobCountResponse(c.CategoryID, c.Name, c.NumberOfJobs))
+                .Select(c => new CategoryJobCountResponse(c.CategoryId, c.CategoryKey, c.CategoryName, c.ListingUrl, c.IsActive, c.NumberOfJobs))
                 .ToListAsync();
 
             return new JobStatisticsResponse(
@@ -518,13 +594,30 @@ FROM (
             if (profile == null || profile.SavedJobPosts == null || !profile.SavedJobPosts.Any())
                 return new PagedList<JobIndexPosts>(0, 10, page, []);
 
-            var jobIds = profile.SavedJobPosts
-                .Select(id => int.TryParse(id, out var jid) ? jid : (int?)null)
-                .Where(id => id.HasValue)
-                .Select(id => id!.Value)
-                .ToList();
+            if (await ShouldUseLegacyInMemoryJobsAsync())
+            {
+                var jobIds = profile.SavedJobPosts
+                    .Select(id => long.TryParse(id, out var jid) ? jid : (long?)null)
+                    .Where(id => id.HasValue)
+                    .Select(id => id!.Value)
+                    .ToList();
 
-            var jobs = await _db.JobIndexPosts.Where(j => jobIds.Contains(j.JobID)).ToListAsync();
+                var jobsLegacy = await _db.JobIndexPosts
+                    .Include(j => j.Categories)
+                    .Where(j => jobIds.Contains(j.JobID))
+                    .AsNoTracking()
+                    .ToListAsync();
+
+                return new PagedList<JobIndexPosts>(jobsLegacy.Count, 10, page, jobsLegacy);
+            }
+
+            var references = profile.SavedJobPosts
+                .Where(reference => !string.IsNullOrWhiteSpace(reference))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var jobs = await BuildCurrentJobsQuery()
+                .Where(j => references.Contains(j.JobUrl!))
+                .ToListAsync();
             return new PagedList<JobIndexPosts>(jobs.Count, 10, page, jobs);
         }
 
@@ -540,14 +633,14 @@ FROM (
             // Normalize filter parameters for cache key
             var searchTerms = request?.SearchTerms?.Where(t => !string.IsNullOrWhiteSpace(t)).ToList();
             var locations = request?.Locations?.Where(l => !string.IsNullOrWhiteSpace(l)).ToList();
-            var categoryIds = request?.CategoryIds?.Where(id => id > 0).ToList();
+            var categoryKeys = request?.CategoryKeys?.Where(key => !string.IsNullOrWhiteSpace(key)).Select(key => key.Trim()).ToList();
 
             // Use hash-based cache key for efficiency
             var cacheKey = JobSearchQueryBuilder.GenerateCacheKey(
                 $"rec:{userId}:m{RecommendationMinRank}",
                 searchTerms,
                 locations,
-                categoryIds,
+                categoryKeys,
                 effectivePostedAfter,
                 request?.PostedBefore,
                 page,
@@ -612,18 +705,19 @@ FROM (
                 .Distinct()
                 .ToList();
 
-            var normalizedCategoryIds = request?.CategoryIds?
-                .Where(id => id > 0)
+            var normalizedCategoryKeys = request?.CategoryKeys?
+                .Where(key => !string.IsNullOrWhiteSpace(key))
+                .Select(key => key.Trim())
                 .Distinct()
                 .ToList();
 
             if (_db.Database.IsSqlServer())
             {
-                return await BuildRecommendationsSqlServer(keywords, request, locationTokens, normalizedSearchTerms, normalizedCategoryIds, page, pageSize, effectivePostedAfter);
+                return await BuildRecommendationsSqlServer(keywords, request, locationTokens, normalizedSearchTerms, normalizedCategoryKeys, page, pageSize, effectivePostedAfter);
             }
             else
             {
-                return await BuildRecommendationsInMemory(keywords, request, locationTokens, normalizedSearchTerms, normalizedCategoryIds, page, pageSize, effectivePostedAfter);
+                return await BuildRecommendationsInMemory(keywords, request, locationTokens, normalizedSearchTerms, normalizedCategoryKeys, page, pageSize, effectivePostedAfter);
             }
         }
 
@@ -632,7 +726,7 @@ FROM (
             RecommendedJobsRequest? request,
             List<string?>? locationTokens,
             List<string>? searchTerms,
-            List<int>? categoryIds,
+            List<string>? categoryKeys,
             int page,
             int pageSize,
             DateTime? effectivePostedAfter)
@@ -642,7 +736,7 @@ FROM (
                 .WithPagination(page, pageSize)
                 .WithDateRange(effectivePostedAfter, request?.PostedBefore)
                 .WithLocations(locationTokens)
-                .WithCategories(categoryIds)
+                .WithCategories(categoryKeys)
                 .WithSearchTermsLike(searchTerms)
                 .WithMinRank(RecommendationMinRank);
 
@@ -656,9 +750,10 @@ FROM (
 
             var items = await _db.JobIndexPosts
                 .FromSqlRaw(sql, parameters)
-                .Include(j => j.Categories)
                 .AsNoTracking()
                 .ToListAsync();
+
+            await PopulateCategoriesAsync(items);
 
             // Execute count query only if we have results
             int totalCount = 0;
@@ -691,20 +786,7 @@ FROM (
             // Load categories separately for the returned jobs
             if (items.Count > 0)
             {
-                var jobIds = items.Select(j => j.JobID).ToList();
-                var jobCategories = await _db.JobIndexPosts
-                    .Where(j => jobIds.Contains(j.JobID))
-                    .Include(j => j.Categories)
-                    .AsNoTracking()
-                    .ToDictionaryAsync(j => j.JobID, j => j.Categories);
-
-                foreach (var job in items)
-                {
-                    if (jobCategories.TryGetValue(job.JobID, out var categories))
-                    {
-                        job.Categories = categories;
-                    }
-                }
+                await PopulateCategoriesAsync(items);
             }
 
             // Get total count from output parameter
@@ -725,15 +807,17 @@ FROM (
             var countSql = $@"
 SELECT COUNT(DISTINCT r.JobID) AS Value
 FROM (
-    SELECT t.[KEY] AS JobID
-    FROM CONTAINSTABLE(dbo.JobIndexPostingsExtended, (JobTitle, JobDescription, CompanyName, JobLocation), @ftQuery, {queryBuilder.MainTableTopN}) t
+    SELECT s.job_id AS JobID
+    FROM CONTAINSTABLE(dbo.job_snapshots, (job_title_normalized, job_description_clean, company_name_normalized, location_normalized), @ftQuery, {queryBuilder.MainTableTopN}) t
+    JOIN dbo.job_snapshots s ON s.job_snapshot_id = t.[KEY]
     UNION
-    SELECT j.JobID
-    FROM CONTAINSTABLE(dbo.JobKeywords, Keyword, @ftQuery, {queryBuilder.KeywordsTableTopN}) tk
-    JOIN dbo.JobKeywords k ON k.KeywordID = tk.[KEY]
-    JOIN dbo.JobIndexPostingsExtended j ON j.JobID = k.JobID
+    SELECT s.job_id
+    FROM CONTAINSTABLE(dbo.job_keywords, keyword, @ftQuery, {queryBuilder.KeywordsTableTopN}) tk
+    JOIN dbo.job_keywords k ON k.job_keyword_id = tk.[KEY]
+    JOIN dbo.job_snapshots s ON s.job_snapshot_id = k.job_snapshot_id
 ) r
-JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
+JOIN dbo.jobs j ON j.job_id = r.JobID
+JOIN dbo.job_snapshots s ON s.job_snapshot_id = j.current_snapshot_id
 {whereClause}";
 
             return await _db.Database
@@ -749,14 +833,19 @@ JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
             RecommendedJobsRequest? request,
             List<string?>? locationTokens,
             List<string>? searchTerms,
-            List<int>? categoryIds,
+            List<string>? categoryKeys,
             int page,
             int pageSize,
             DateTime? effectivePostedAfter)
         {
+            if (await ShouldUseLegacyInMemoryJobsAsync())
+            {
+                return await BuildLegacyRecommendationsInMemory(keywords, request, locationTokens, searchTerms, categoryKeys, page, pageSize, effectivePostedAfter);
+            }
+
             var kw = keywords.Select(k => k.ToLowerInvariant()).ToList();
-            var jobs = await _db.JobIndexPosts.Include(j => j.Categories).AsNoTracking().ToListAsync();
-            var jobKeywords = await _db.JobKeywords.AsNoTracking().ToListAsync();
+            var jobs = await BuildCurrentJobsQuery().ToListAsync();
+            var jobKeywords = await GetCurrentSnapshotKeywordsQuery().ToListAsync();
 
             // First filter by profile keywords (recommendations)
             var filteredJobs = jobs.Where(j =>
@@ -764,8 +853,8 @@ JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
                 (j.CompanyName != null && kw.Any(k => j.CompanyName!.ToLower().Contains(k))) ||
                 (j.JobDescription != null && kw.Any(k => j.JobDescription!.ToLower().Contains(k))) ||
                 (j.JobLocation != null && kw.Any(k => j.JobLocation!.ToLower().Contains(k))) ||
-                (j.Categories.Any(c => c.Name != null && kw.Any(k => c.Name.ToLower().Contains(k)))) ||
-                jobKeywords.Any(kj => kj.JobID == j.JobID && kj.Keyword != null && kw.Any(k => kj.Keyword.ToLower().Contains(k)))
+                (j.Categories.Any(c => c.CategoryName != null && kw.Any(k => c.CategoryName.ToLower().Contains(k)))) ||
+                jobKeywords.Any(kj => kj.JobId == j.JobID && kj.Keyword != null && kw.Any(k => kj.Keyword.ToLower().Contains(k)))
             ).AsEnumerable();
 
             // Apply additional filters from request
@@ -787,10 +876,10 @@ JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
             }
 
             // Multiple categories with OR logic
-            if (categoryIds != null && categoryIds.Count > 0)
+            if (categoryKeys != null && categoryKeys.Count > 0)
             {
                 filteredJobs = filteredJobs.Where(j =>
-                    j.Categories != null && j.Categories.Any(c => categoryIds.Contains(c.CategoryID)));
+                    j.Categories != null && j.Categories.Any(c => categoryKeys.Contains(c.CategoryKey)));
             }
 
             // Multiple search terms with OR logic
@@ -801,7 +890,7 @@ JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
                     (!string.IsNullOrEmpty(j.JobTitle) && terms.Any(term => j.JobTitle.ToLower().Contains(term))) ||
                     (!string.IsNullOrEmpty(j.CompanyName) && terms.Any(term => j.CompanyName.ToLower().Contains(term))) ||
                     (!string.IsNullOrEmpty(j.JobDescription) && terms.Any(term => j.JobDescription.ToLower().Contains(term))) ||
-                    jobKeywords.Any(k => k.JobID == j.JobID && k.Keyword != null && terms.Any(term => k.Keyword.ToLower().Contains(term)))
+                    jobKeywords.Any(k => k.JobId == j.JobID && k.Keyword != null && terms.Any(term => k.Keyword.ToLower().Contains(term)))
                 );
             }
 
@@ -857,6 +946,201 @@ JOIN dbo.JobIndexPostingsExtended j ON j.JobID = r.JobID
             }
 
             return keywords;
+        }
+
+        public async Task<JobImageContent?> GetImageAsync(long jobId, string imageRole)
+        {
+            var job = await _db.Jobs
+                .Include(j => j.CurrentSnapshot)
+                .FirstOrDefaultAsync(j => j.JobId == jobId && j.IsActive && j.CurrentSnapshotId != null);
+
+            if (job?.CurrentSnapshot == null)
+            {
+                return null;
+            }
+
+            var imageId = string.Equals(imageRole, "banner", StringComparison.OrdinalIgnoreCase)
+                ? job.CurrentSnapshot.BannerImageId
+                : job.CurrentSnapshot.FooterImageId;
+
+            if (!imageId.HasValue)
+            {
+                return null;
+            }
+
+            var image = await _db.JobImages.AsNoTracking().FirstOrDefaultAsync(i => i.JobImageId == imageId.Value);
+            return image == null ? null : new JobImageContent(image.ImageBytes, image.ContentType ?? "application/octet-stream");
+        }
+
+        private IQueryable<JobIndexPosts> BuildCurrentJobsQuery()
+        {
+            return _db.Jobs
+                .AsNoTracking()
+                .Where(j => j.IsActive && j.CurrentSnapshotId != null)
+                .Select(j => new JobIndexPosts
+                {
+                    JobID = j.JobId,
+                    CompanyName = j.CurrentSnapshot!.CompanyNameNormalized,
+                    CompanyURL = j.CurrentSnapshot.CompanyUrlNormalized,
+                    JobTitle = j.CurrentSnapshot.JobTitleNormalized,
+                    JobDescription = j.CurrentSnapshot.JobDescriptionClean,
+                    JobLocation = j.CurrentSnapshot.LocationNormalized,
+                    JobUrl = j.CanonicalJobUrl,
+                    Published = j.CurrentSnapshot.PublishedUtc,
+                    BannerImageUrl = j.CurrentSnapshot.BannerImageId != null ? $"/api/jobindexposts/{j.JobId}/images/banner" : null,
+                    FooterImageUrl = j.CurrentSnapshot.FooterImageId != null ? $"/api/jobindexposts/{j.JobId}/images/footer" : null,
+                    SourceHost = j.SourceHost,
+                    Categories = j.JobCategories.Select(jc => jc.Category).ToList()
+                });
+        }
+
+        private IQueryable<CurrentJobKeyword> GetCurrentSnapshotKeywordsQuery()
+        {
+            return _db.Jobs
+                .AsNoTracking()
+                .Where(j => j.IsActive && j.CurrentSnapshotId != null)
+                .SelectMany(j => _db.JobKeywords
+                    .Where(k => k.JobSnapshotId == j.CurrentSnapshotId)
+                    .Select(k => new CurrentJobKeyword(j.JobId, k.Keyword)));
+        }
+
+        private sealed record CurrentJobKeyword(long JobId, string Keyword);
+
+        private async Task PopulateCategoriesAsync(List<JobIndexPosts> jobs)
+        {
+            if (jobs.Count == 0)
+            {
+                return;
+            }
+
+            var jobIds = jobs.Select(j => j.JobID).ToList();
+            var categories = await _db.JobCategories
+                .AsNoTracking()
+                .Where(jc => jobIds.Contains(jc.JobId))
+                .Include(jc => jc.Category)
+                .ToListAsync();
+
+            var lookup = categories
+                .GroupBy(jc => jc.JobId)
+                .ToDictionary(g => g.Key, g => (ICollection<Category>)g.Select(x => x.Category).ToList());
+
+            foreach (var job in jobs)
+            {
+                if (lookup.TryGetValue(job.JobID, out var jobCategories))
+                {
+                    job.Categories = jobCategories;
+                }
+            }
+        }
+
+        private async Task<bool> ShouldUseLegacyInMemoryJobsAsync()
+        {
+            return !_db.Database.IsSqlServer() && !await _db.Jobs.AsNoTracking().AnyAsync();
+        }
+
+        private async Task<PagedList<JobIndexPosts>> ExecuteLegacyInMemorySearchAsync(
+            List<string>? searchTerms,
+            List<string?>? locationTokens,
+            List<string>? categoryKeys,
+            DateTime? postedAfter,
+            DateTime? postedBefore,
+            int page,
+            int pageSize)
+        {
+            var jobs = await _db.JobIndexPosts.Include(j => j.Categories).AsNoTracking().ToListAsync();
+            IEnumerable<JobIndexPosts> filteredJobs = jobs;
+
+            if (postedAfter.HasValue)
+            {
+                filteredJobs = filteredJobs.Where(j => j.Published >= postedAfter.Value);
+            }
+
+            if (postedBefore.HasValue)
+            {
+                filteredJobs = filteredJobs.Where(j => j.Published <= postedBefore.Value);
+            }
+
+            if (locationTokens is { Count: > 0 })
+            {
+                filteredJobs = filteredJobs.Where(j =>
+                    !string.IsNullOrWhiteSpace(j.JobLocation) &&
+                    locationTokens.Any(loc => j.JobLocation!.IndexOf(loc!, StringComparison.OrdinalIgnoreCase) >= 0));
+            }
+
+            if (categoryKeys is { Count: > 0 })
+            {
+                filteredJobs = filteredJobs.Where(j => j.Categories.Any(c => categoryKeys.Contains(c.CategoryKey)));
+            }
+
+            if (searchTerms is { Count: > 0 })
+            {
+                var terms = searchTerms.Select(t => t.ToLowerInvariant()).ToList();
+                filteredJobs = filteredJobs.Where(j =>
+                    (!string.IsNullOrEmpty(j.JobTitle) && terms.Any(term => j.JobTitle.ToLower().Contains(term))) ||
+                    (!string.IsNullOrEmpty(j.CompanyName) && terms.Any(term => j.CompanyName.ToLower().Contains(term))) ||
+                    (!string.IsNullOrEmpty(j.JobDescription) && terms.Any(term => j.JobDescription.ToLower().Contains(term))));
+            }
+
+            var filteredList = filteredJobs.ToList();
+            return new PagedList<JobIndexPosts>(filteredList.Count, pageSize, page, filteredList.Skip((page - 1) * pageSize).Take(pageSize).ToList());
+        }
+
+        private async Task<PagedList<JobIndexPosts>> BuildLegacyRecommendationsInMemory(
+            List<string> keywords,
+            RecommendedJobsRequest? request,
+            List<string?>? locationTokens,
+            List<string>? searchTerms,
+            List<string>? categoryKeys,
+            int page,
+            int pageSize,
+            DateTime? effectivePostedAfter)
+        {
+            var kw = keywords.Select(k => k.ToLowerInvariant()).ToList();
+            var jobs = await _db.JobIndexPosts.Include(j => j.Categories).AsNoTracking().ToListAsync();
+
+            var filteredJobs = jobs.Where(j =>
+                (!string.IsNullOrEmpty(j.JobTitle) && kw.Any(k => j.JobTitle!.ToLower().Contains(k))) ||
+                (!string.IsNullOrEmpty(j.CompanyName) && kw.Any(k => j.CompanyName!.ToLower().Contains(k))) ||
+                (!string.IsNullOrEmpty(j.JobDescription) && kw.Any(k => j.JobDescription!.ToLower().Contains(k))) ||
+                (!string.IsNullOrEmpty(j.JobLocation) && kw.Any(k => j.JobLocation!.ToLower().Contains(k))) ||
+                j.Categories.Any(c => !string.IsNullOrWhiteSpace(c.CategoryName) && kw.Any(k => c.CategoryName.ToLower().Contains(k))));
+
+            if (effectivePostedAfter.HasValue)
+            {
+                filteredJobs = filteredJobs.Where(j => j.Published >= effectivePostedAfter.Value);
+            }
+
+            if (request?.PostedBefore.HasValue == true)
+            {
+                filteredJobs = filteredJobs.Where(j => j.Published <= request.PostedBefore.Value);
+            }
+
+            if (locationTokens is { Count: > 0 })
+            {
+                filteredJobs = filteredJobs.Where(j => !string.IsNullOrWhiteSpace(j.JobLocation) && locationTokens.Any(loc => j.JobLocation!.IndexOf(loc!, StringComparison.OrdinalIgnoreCase) >= 0));
+            }
+
+            if (categoryKeys is { Count: > 0 })
+            {
+                filteredJobs = filteredJobs.Where(j => j.Categories.Any(c => categoryKeys.Contains(c.CategoryKey)));
+            }
+
+            if (searchTerms is { Count: > 0 })
+            {
+                var terms = searchTerms.Select(t => t.ToLowerInvariant()).ToList();
+                filteredJobs = filteredJobs.Where(j =>
+                    (!string.IsNullOrEmpty(j.JobTitle) && terms.Any(term => j.JobTitle.ToLower().Contains(term))) ||
+                    (!string.IsNullOrEmpty(j.CompanyName) && terms.Any(term => j.CompanyName.ToLower().Contains(term))) ||
+                    (!string.IsNullOrEmpty(j.JobDescription) && terms.Any(term => j.JobDescription.ToLower().Contains(term))));
+            }
+
+            var filteredList = filteredJobs
+                .OrderByDescending(j => j.Published)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToList();
+
+            return new PagedList<JobIndexPosts>(filteredJobs.Count(), pageSize, page, filteredList);
         }
     }
 }

@@ -1,6 +1,6 @@
 ﻿namespace FindjobnuService.DTOs.Responses
 {
-    public readonly record struct CategoryJobCountResponse(int Id, string Name, int NumberOfJobs);
+    public readonly record struct CategoryJobCountResponse(long Id, string CategoryKey, string CategoryName, string ListingUrl, bool IsActive, int NumberOfJobs);
 
     public struct CategoriesResponse(bool success, string? errorMessage, IReadOnlyList<CategoryJobCountResponse> categories)
     {

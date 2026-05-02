@@ -17,8 +17,8 @@ namespace FindjobnuTesting
                 .Options;
             var context = new FindjobnuContext(options);
 
-            var itCategory = new Category { Name = "IT" };
-            var designCategory = new Category { Name = "Design" };
+            var itCategory = new Category { CategoryKey = "it", Name = "IT", ListingUrl = "/it", IsActive = true };
+            var designCategory = new Category { CategoryKey = "design", Name = "Design", ListingUrl = "/design", IsActive = true };
             context.Categories.AddRange(itCategory, designCategory);
             context.JobIndexPosts.AddRange(
                 new JobIndexPosts { JobID = 1, JobTitle = "Developer", JobLocation = "NY", Categories = [itCategory], Published = DateTime.UtcNow.AddDays(-1) },
@@ -48,9 +48,9 @@ namespace FindjobnuTesting
             var context = GetDbContextWithData();
             var logger = new Mock<ILogger<JobIndexPostsService>>().Object;
             var service = new JobIndexPostsService(context, logger);
-            var itCategoryId = await context.Categories.FirstAsync(c => c.Name == "IT");
+            var itCategoryId = await context.Categories.FirstAsync(c => c.CategoryName == "IT");
 
-            var result = await service.SearchAsync(null, ["NY"], [itCategoryId.CategoryID], null, null, 1, 20);
+            var result = await service.SearchAsync(null, ["NY"], [itCategoryId.CategoryKey], null, null, 1, 20);
 
             Assert.NotNull(result);
             Assert.Single(result.Items);
@@ -81,8 +81,8 @@ namespace FindjobnuTesting
 
             Assert.True(response.Success);
             Assert.Null(response.ErrorMessage);
-            Assert.Contains(response.Categories, c => c.Name == "IT");
-            Assert.Contains(response.Categories, c => c.Name == "Design");
+            Assert.Contains(response.Categories, c => c.CategoryName == "IT");
+            Assert.Contains(response.Categories, c => c.CategoryName == "Design");
             Assert.Equal(2, response.Categories.Count);
         }
 
@@ -95,7 +95,7 @@ namespace FindjobnuTesting
             using var context = new FindjobnuContext(options);
             var logger = new Mock<ILogger<JobIndexPostsService>>().Object;
             // Add categories
-            var itCategory = new Category { Name = "IT" };
+            var itCategory = new Category { CategoryKey = "it", Name = "IT", ListingUrl = "/it", IsActive = true };
             context.Categories.Add(itCategory);
             // Add jobs
             var job1 = new JobIndexPosts { JobID = 10, JobTitle = "Dev", Categories = [itCategory], JobLocation = "NY", Published = DateTime.UtcNow };
@@ -155,7 +155,7 @@ namespace FindjobnuTesting
                 .UseInMemoryDatabase(Guid.NewGuid().ToString())
                 .Options;
             using var context = new FindjobnuContext(options);
-            var category = new Category { Name = "IT" };
+            var category = new Category { CategoryKey = "it", Name = "IT", ListingUrl = "/it", IsActive = true };
             context.Categories.Add(category);
             context.JobIndexPosts.AddRange(
                 new JobIndexPosts { JobID = 100, JobTitle = "Backend Dev", JobLocation = "København K", Categories = [category], Published = DateTime.UtcNow },
@@ -166,7 +166,7 @@ namespace FindjobnuTesting
             var logger = new Mock<ILogger<JobIndexPostsService>>().Object;
             var service = new JobIndexPostsService(context, logger);
 
-            var result = await service.SearchAsync(null, ["København K"], [category.CategoryID], null, null, 1, 20);
+            var result = await service.SearchAsync(null, ["København K"], [category.CategoryKey], null, null, 1, 20);
 
             Assert.Equal(2, result.TotalCount);
             Assert.Contains(result.Items, j => j.JobLocation == "København V");
@@ -182,8 +182,8 @@ namespace FindjobnuTesting
             using var context = new FindjobnuContext(options);
             var logger = new Mock<ILogger<JobIndexPostsService>>().Object;
 
-            var itCategory = new Category { Name = "IT" };
-            var designCategory = new Category { Name = "Design" };
+            var itCategory = new Category { CategoryKey = "it", Name = "IT", ListingUrl = "/it", IsActive = true };
+            var designCategory = new Category { CategoryKey = "design", Name = "Design", ListingUrl = "/design", IsActive = true };
             context.Categories.AddRange(itCategory, designCategory);
             context.JobIndexPosts.AddRange(
                 new JobIndexPosts { JobID = 10, JobTitle = "C# Developer", JobLocation = "NY", Categories = [itCategory], Published = DateTime.UtcNow },
@@ -199,7 +199,7 @@ namespace FindjobnuTesting
             await context.SaveChangesAsync();
 
             var service = new JobIndexPostsService(context, logger);
-            var request = new RecommendedJobsRequest(null, ["NY"], [itCategory.CategoryID], null, null, 1, 10);
+            var request = new RecommendedJobsRequest(null, ["NY"], [itCategory.CategoryKey], null, null, 1, 10);
 
             var result = await service.GetRecommendedJobsByUserAndProfile("user1", request);
 
@@ -215,9 +215,9 @@ namespace FindjobnuTesting
                 .UseInMemoryDatabase(Guid.NewGuid().ToString())
                 .Options;
             using var context = new FindjobnuContext(options);
-            var tech = new Category { Name = "Tech" };
-            var health = new Category { Name = "Health" };
-            var design = new Category { Name = "Design" };
+            var tech = new Category { CategoryKey = "tech", Name = "Tech", ListingUrl = "/tech", IsActive = true };
+            var health = new Category { CategoryKey = "health", Name = "Health", ListingUrl = "/health", IsActive = true };
+            var design = new Category { CategoryKey = "design", Name = "Design", ListingUrl = "/design", IsActive = true };
             context.Categories.AddRange(tech, health, design);
             var now = DateTime.UtcNow;
             context.JobIndexPosts.AddRange(
@@ -239,9 +239,9 @@ namespace FindjobnuTesting
             Assert.Equal(7, stats.TotalJobs);
             Assert.Equal(4, stats.NewJobsLastWeek);
             Assert.Equal(6, stats.NewJobsLastMonth);
-            Assert.Equal("Health", stats.TopCategories.First().Name);
+            Assert.Equal("Health", stats.TopCategories.First().CategoryName);
             Assert.Equal(3, stats.TopCategories.First().NumberOfJobs);
-            Assert.Equal("Health", stats.TopCategoriesLastWeek.First().Name);
+            Assert.Equal("Health", stats.TopCategoriesLastWeek.First().CategoryName);
             Assert.Equal(2, stats.TopCategoriesLastWeek.First().NumberOfJobs);
         }
 
@@ -252,7 +252,7 @@ namespace FindjobnuTesting
                 .UseInMemoryDatabase(Guid.NewGuid().ToString())
                 .Options;
             using var context = new FindjobnuContext(options);
-            var category = new Category { Name = "IT" };
+            var category = new Category { CategoryKey = "it", Name = "IT", ListingUrl = "/it", IsActive = true };
             context.Categories.Add(category);
             context.JobIndexPosts.AddRange(
                 new JobIndexPosts { JobID = 1, JobTitle = "Dev", JobLocation = "New York", Categories = [category], Published = DateTime.UtcNow },
@@ -279,9 +279,9 @@ namespace FindjobnuTesting
                 .UseInMemoryDatabase(Guid.NewGuid().ToString())
                 .Options;
             using var context = new FindjobnuContext(options);
-            var itCategory = new Category { Name = "IT" };
-            var designCategory = new Category { Name = "Design" };
-            var financeCategory = new Category { Name = "Finance" };
+            var itCategory = new Category { CategoryKey = "it", Name = "IT", ListingUrl = "/it", IsActive = true };
+            var designCategory = new Category { CategoryKey = "design", Name = "Design", ListingUrl = "/design", IsActive = true };
+            var financeCategory = new Category { CategoryKey = "finance", Name = "Finance", ListingUrl = "/finance", IsActive = true };
             context.Categories.AddRange(itCategory, designCategory, financeCategory);
             context.JobIndexPosts.AddRange(
                 new JobIndexPosts { JobID = 1, JobTitle = "Developer", JobLocation = "NY", Categories = [itCategory], Published = DateTime.UtcNow },
@@ -293,7 +293,7 @@ namespace FindjobnuTesting
             var logger = new Mock<ILogger<JobIndexPostsService>>().Object;
             var service = new JobIndexPostsService(context, logger);
 
-            var result = await service.SearchAsync(null, null, [itCategory.CategoryID, designCategory.CategoryID], null, null, 1, 20);
+            var result = await service.SearchAsync(null, null, [itCategory.CategoryKey, designCategory.CategoryKey], null, null, 1, 20);
 
             Assert.Equal(2, result.TotalCount);
             Assert.Contains(result.Items, j => j.JobTitle == "Developer");
@@ -308,7 +308,7 @@ namespace FindjobnuTesting
                 .UseInMemoryDatabase(Guid.NewGuid().ToString())
                 .Options;
             using var context = new FindjobnuContext(options);
-            var category = new Category { Name = "IT" };
+            var category = new Category { CategoryKey = "it", Name = "IT", ListingUrl = "/it", IsActive = true };
             context.Categories.Add(category);
             context.JobIndexPosts.AddRange(
                 new JobIndexPosts { JobID = 1, JobTitle = "C# Developer", JobLocation = "NY", Categories = [category], Published = DateTime.UtcNow },
@@ -335,8 +335,8 @@ namespace FindjobnuTesting
                 .UseInMemoryDatabase(Guid.NewGuid().ToString())
                 .Options;
             using var context = new FindjobnuContext(options);
-            var itCategory = new Category { Name = "IT" };
-            var designCategory = new Category { Name = "Design" };
+            var itCategory = new Category { CategoryKey = "it", Name = "IT", ListingUrl = "/it", IsActive = true };
+            var designCategory = new Category { CategoryKey = "design", Name = "Design", ListingUrl = "/design", IsActive = true };
             context.Categories.AddRange(itCategory, designCategory);
             context.JobIndexPosts.AddRange(
                 new JobIndexPosts { JobID = 1, JobTitle = "C# Developer", JobLocation = "New York", Categories = [itCategory], Published = DateTime.UtcNow },
@@ -353,7 +353,7 @@ namespace FindjobnuTesting
             var result = await service.SearchAsync(
                 ["C#", "Python"], 
                 ["New York", "Los Angeles"], 
-                [itCategory.CategoryID], 
+                [itCategory.CategoryKey], 
                 null, null, 1, 20);
 
             Assert.Equal(3, result.TotalCount);
@@ -372,7 +372,7 @@ namespace FindjobnuTesting
             using var context = new FindjobnuContext(options);
             var logger = new Mock<ILogger<JobIndexPostsService>>().Object;
 
-            var category = new Category { Name = "IT" };
+            var category = new Category { CategoryKey = "it", Name = "IT", ListingUrl = "/it", IsActive = true };
             context.Categories.Add(category);
             context.JobIndexPosts.AddRange(
                 new JobIndexPosts { JobID = 1, JobTitle = "Developer", JobLocation = "New York", Categories = [category], Published = DateTime.UtcNow },
@@ -408,9 +408,9 @@ namespace FindjobnuTesting
             using var context = new FindjobnuContext(options);
             var logger = new Mock<ILogger<JobIndexPostsService>>().Object;
 
-            var itCategory = new Category { Name = "IT" };
-            var designCategory = new Category { Name = "Design" };
-            var financeCategory = new Category { Name = "Finance" };
+            var itCategory = new Category { CategoryKey = "it", Name = "IT", ListingUrl = "/it", IsActive = true };
+            var designCategory = new Category { CategoryKey = "design", Name = "Design", ListingUrl = "/design", IsActive = true };
+            var financeCategory = new Category { CategoryKey = "finance", Name = "Finance", ListingUrl = "/finance", IsActive = true };
             context.Categories.AddRange(itCategory, designCategory, financeCategory);
             context.JobIndexPosts.AddRange(
                 new JobIndexPosts { JobID = 1, JobTitle = "Developer", JobLocation = "NY", Categories = [itCategory], Published = DateTime.UtcNow },
@@ -427,7 +427,7 @@ namespace FindjobnuTesting
             await context.SaveChangesAsync();
 
             var service = new JobIndexPostsService(context, logger);
-            var request = new RecommendedJobsRequest(null, null, [itCategory.CategoryID, designCategory.CategoryID], null, null, 1, 10);
+            var request = new RecommendedJobsRequest(null, null, [itCategory.CategoryKey, designCategory.CategoryKey], null, null, 1, 10);
 
             var result = await service.GetRecommendedJobsByUserAndProfile("user1", request);
 
@@ -446,7 +446,7 @@ namespace FindjobnuTesting
             using var context = new FindjobnuContext(options);
             var logger = new Mock<ILogger<JobIndexPostsService>>().Object;
 
-            var category = new Category { Name = "IT" };
+            var category = new Category { CategoryKey = "it", Name = "IT", ListingUrl = "/it", IsActive = true };
             context.Categories.Add(category);
             context.JobIndexPosts.AddRange(
                 new JobIndexPosts { JobID = 1, JobTitle = "C# Developer", JobLocation = "NY", Categories = [category], Published = DateTime.UtcNow },
@@ -482,7 +482,7 @@ namespace FindjobnuTesting
             using var context = new FindjobnuContext(options);
             var logger = new Mock<ILogger<JobIndexPostsService>>().Object;
 
-            var category = new Category { Name = "IT" };
+            var category = new Category { CategoryKey = "it", Name = "IT", ListingUrl = "/it", IsActive = true };
             context.Categories.Add(category);
             var recent = DateTime.UtcNow.AddDays(-5);
             var stale = DateTime.UtcNow.AddDays(-120);
@@ -548,8 +548,8 @@ namespace FindjobnuTesting
             using var context = new FindjobnuContext(options);
             var logger = new Mock<ILogger<JobIndexPostsService>>().Object;
 
-            var itCategory = new Category { Name = "IT" };
-            var designCategory = new Category { Name = "Design" };
+            var itCategory = new Category { CategoryKey = "it", Name = "IT", ListingUrl = "/it", IsActive = true };
+            var designCategory = new Category { CategoryKey = "design", Name = "Design", ListingUrl = "/design", IsActive = true };
             context.Categories.AddRange(itCategory, designCategory);
             context.JobIndexPosts.AddRange(
                 new JobIndexPosts { JobID = 1, JobTitle = "Senior Developer", JobLocation = "New York", Categories = [itCategory], Published = DateTime.UtcNow },
@@ -571,7 +571,7 @@ namespace FindjobnuTesting
             var request = new RecommendedJobsRequest(
                 ["Senior", "Junior"], 
                 ["New York", "Los Angeles"], 
-                [itCategory.CategoryID], 
+                [itCategory.CategoryKey], 
                 null, null, 1, 10);
 
             var result = await service.GetRecommendedJobsByUserAndProfile("user1", request);

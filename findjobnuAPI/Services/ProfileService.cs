@@ -26,12 +26,12 @@ namespace FindjobnuService.Services
             if (profile == null) return null;
             if (profile.BasicInfo == null) profile.BasicInfo = new BasicInfo();
 
-            // Fetch categories for JobAgent if it exists and has preferred category IDs
+            // Fetch categories for JobAgent if it exists and has preferred category keys
             IEnumerable<Category>? categories = null;
-            if (profile.JobAgent?.PreferredCategoryIds != null && profile.JobAgent.PreferredCategoryIds.Any())
+            if (profile.JobAgent?.PreferredCategoryKeys != null && profile.JobAgent.PreferredCategoryKeys.Any())
             {
                 categories = await _db.Categories
-                    .Where(c => profile.JobAgent.PreferredCategoryIds.Contains(c.CategoryID))
+                    .Where(c => profile.JobAgent.PreferredCategoryKeys.Contains(c.CategoryKey))
                     .AsNoTracking()
                     .ToListAsync();
             }
@@ -223,23 +223,55 @@ namespace FindjobnuService.Services
             if (profile == null || profile.SavedJobPosts == null || profile.SavedJobPosts.Count == 0)
                 return new PagedList<JobIndexPosts>(0, pagesize, page, []);
 
-            var jobIds = profile.SavedJobPosts
-                .Select(id => int.TryParse(id, out var jid) ? jid : (int?)null)
-                .Where(id => id.HasValue)
-                .Select(id => id!.Value)
-                .ToHashSet();
+            if (!_db.Database.IsSqlServer() && !await _db.Jobs.AsNoTracking().AnyAsync())
+            {
+                var jobIds = profile.SavedJobPosts
+                    .Select(id => long.TryParse(id, out var jid) ? jid : (long?)null)
+                    .Where(id => id.HasValue)
+                    .Select(id => id!.Value)
+                    .ToHashSet();
 
-            if (jobIds.Count == 0)
+                if (jobIds.Count == 0)
+                    return new PagedList<JobIndexPosts>(0, pagesize, page, []);
+
+                var legacyJobs = await _db.JobIndexPosts
+                    .Include(j => j.Categories)
+                    .Where(j => jobIds.Contains(j.JobID))
+                    .AsNoTracking()
+                    .ToListAsync();
+
+                return new PagedList<JobIndexPosts>(legacyJobs.Count, pagesize, page, legacyJobs);
+            }
+
+            var references = profile.SavedJobPosts
+                .Where(reference => !string.IsNullOrWhiteSpace(reference))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            if (references.Count == 0)
                 return new PagedList<JobIndexPosts>(0, pagesize, page, []);
 
-            var jobs = await _db.JobIndexPosts
-                .Where(j => jobIds.Contains(j.JobID))
+            var jobs = await _db.Jobs
+                .Where(j => j.IsActive && j.CurrentSnapshotId != null && references.Contains(j.CanonicalJobUrl))
+                .Select(j => new JobIndexPosts
+                {
+                    JobID = j.JobId,
+                    CompanyName = j.CurrentSnapshot!.CompanyNameNormalized,
+                    CompanyURL = j.CurrentSnapshot.CompanyUrlNormalized,
+                    JobTitle = j.CurrentSnapshot.JobTitleNormalized,
+                    JobDescription = j.CurrentSnapshot.JobDescriptionClean,
+                    JobLocation = j.CurrentSnapshot.LocationNormalized,
+                    JobUrl = j.CanonicalJobUrl,
+                    Published = j.CurrentSnapshot.PublishedUtc,
+                    BannerImageUrl = j.CurrentSnapshot.BannerImageId != null ? $"/api/jobindexposts/{j.JobId}/images/banner" : null,
+                    FooterImageUrl = j.CurrentSnapshot.FooterImageId != null ? $"/api/jobindexposts/{j.JobId}/images/footer" : null,
+                    Categories = j.JobCategories.Select(jc => jc.Category).ToList()
+                })
                 .AsNoTracking()
                 .ToListAsync();
             return new PagedList<JobIndexPosts>(jobs.Count, pagesize, page, jobs);
         }
 
-        public async Task<bool> SaveJobAsync(string userId, string jobId)
+        public async Task<bool> SaveJobAsync(string userId, string jobReference)
         {
             var profile = await _db.Profiles
                 .FirstOrDefaultAsync(x => x.UserId == userId);
@@ -251,23 +283,24 @@ namespace FindjobnuService.Services
             {
                 profile.SavedJobPosts = [];
             }
-            if (!profile.SavedJobPosts.Contains(jobId))
+            if (!profile.SavedJobPosts.Contains(jobReference, StringComparer.OrdinalIgnoreCase))
             {
-                profile.SavedJobPosts.Add(jobId);
+                profile.SavedJobPosts.Add(jobReference);
                 await _db.SaveChangesAsync();
                 return true;
             }
             return false;
         }
 
-        public async Task<bool> RemoveSavedJobAsync(string userId, string jobId)
+        public async Task<bool> RemoveSavedJobAsync(string userId, string jobReference)
         {
             var profile = await _db.Profiles
                 .FirstOrDefaultAsync(x => x.UserId == userId);
 
             if (profile == null || profile.SavedJobPosts == null) return false;
 
-            if (profile.SavedJobPosts.Remove(jobId))
+            var existing = profile.SavedJobPosts.FirstOrDefault(saved => string.Equals(saved, jobReference, StringComparison.OrdinalIgnoreCase));
+            if (existing != null && profile.SavedJobPosts.Remove(existing))
             {
                 await _db.SaveChangesAsync();
                 return true;

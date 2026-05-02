@@ -8,6 +8,6 @@ public record JobAgentUpdateRequest(
     [property: Required] bool Enabled,
     JobAgentFrequency? Frequency,
     IReadOnlyCollection<string>? PreferredLocations,
-    IReadOnlyCollection<int>? PreferredCategoryIds,
+    IReadOnlyCollection<string>? PreferredCategoryKeys,
     IReadOnlyCollection<string>? IncludeKeywords
 );

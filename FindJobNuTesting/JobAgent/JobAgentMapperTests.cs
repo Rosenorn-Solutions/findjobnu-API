@@ -26,7 +26,7 @@ namespace FindjobnuTesting.JobAgentTests
                 CreatedAt = DateTime.UtcNow.AddMonths(-1),
                 UpdatedAt = DateTime.UtcNow,
                 PreferredLocations = new List<string> { "Copenhagen", "Aarhus" },
-                PreferredCategoryIds = new List<int> { 1, 2, 3 },
+                PreferredCategoryKeys = new List<string> { "it", "finance", "marketing" },
                 IncludeKeywords = new List<string> { "C#", ".NET" }
             };
 
@@ -43,8 +43,8 @@ namespace FindjobnuTesting.JobAgentTests
             Assert.Equal(agent.UpdatedAt, result.UpdatedAt);
             Assert.Equal(2, result.PreferredLocations.Count);
             Assert.Contains("Copenhagen", result.PreferredLocations);
-            Assert.Equal(3, result.PreferredCategoryIds.Count);
-            Assert.Contains(1, result.PreferredCategoryIds);
+            Assert.Equal(3, result.PreferredCategoryKeys.Count);
+            Assert.Contains("it", result.PreferredCategoryKeys);
             Assert.Empty(result.PreferredCategoryNames);
             Assert.Equal(2, result.IncludeKeywords.Count);
             Assert.Contains("C#", result.IncludeKeywords);
@@ -59,20 +59,20 @@ namespace FindjobnuTesting.JobAgentTests
                 ProfileId = 200,
                 Enabled = false,
                 Frequency = JobAgentFrequency.Daily,
-                PreferredCategoryIds = new List<int> { 1, 2, 3 }
+                PreferredCategoryKeys = new List<string> { "it", "finance", "marketing" }
             };
 
             var categories = new List<Category>
             {
-                new Category { CategoryID = 1, Name = "IT" },
-                new Category { CategoryID = 2, Name = "Finance" },
-                new Category { CategoryID = 3, Name = "Marketing" }
+                new Category { CategoryID = 1, CategoryKey = "it", Name = "IT", ListingUrl = "/it" },
+                new Category { CategoryID = 2, CategoryKey = "finance", Name = "Finance", ListingUrl = "/finance" },
+                new Category { CategoryID = 3, CategoryKey = "marketing", Name = "Marketing", ListingUrl = "/marketing" }
             };
 
             var result = JobAgentMapper.ToDto(agent, categories);
 
             Assert.NotNull(result);
-            Assert.Equal(3, result.PreferredCategoryIds.Count);
+            Assert.Equal(3, result.PreferredCategoryKeys.Count);
             Assert.Equal(3, result.PreferredCategoryNames.Count);
             Assert.Contains("IT", result.PreferredCategoryNames);
             Assert.Contains("Finance", result.PreferredCategoryNames);
@@ -88,19 +88,19 @@ namespace FindjobnuTesting.JobAgentTests
                 ProfileId = 300,
                 Enabled = true,
                 Frequency = JobAgentFrequency.Monthly,
-                PreferredCategoryIds = new List<int> { 1, 2, 99 } // 99 doesn't exist
+                PreferredCategoryKeys = new List<string> { "it", "finance", "missing" }
             };
 
             var categories = new List<Category>
             {
-                new Category { CategoryID = 1, Name = "IT" },
-                new Category { CategoryID = 2, Name = "Finance" }
+                new Category { CategoryID = 1, CategoryKey = "it", Name = "IT", ListingUrl = "/it" },
+                new Category { CategoryID = 2, CategoryKey = "finance", Name = "Finance", ListingUrl = "/finance" }
             };
 
             var result = JobAgentMapper.ToDto(agent, categories);
 
             Assert.NotNull(result);
-            Assert.Equal(3, result.PreferredCategoryIds.Count);
+            Assert.Equal(3, result.PreferredCategoryKeys.Count);
             Assert.Equal(2, result.PreferredCategoryNames.Count); // Only matching categories
             Assert.Contains("IT", result.PreferredCategoryNames);
             Assert.Contains("Finance", result.PreferredCategoryNames);
@@ -116,18 +116,18 @@ namespace FindjobnuTesting.JobAgentTests
                 ProfileId = 400,
                 Enabled = true,
                 Frequency = JobAgentFrequency.Weekly,
-                PreferredCategoryIds = null
+                PreferredCategoryKeys = null
             };
 
             var categories = new List<Category>
             {
-                new Category { CategoryID = 1, Name = "IT" }
+                new Category { CategoryID = 1, CategoryKey = "it", Name = "IT", ListingUrl = "/it" }
             };
 
             var result = JobAgentMapper.ToDto(agent, categories);
 
             Assert.NotNull(result);
-            Assert.Empty(result.PreferredCategoryIds);
+            Assert.Empty(result.PreferredCategoryKeys);
             Assert.Empty(result.PreferredCategoryNames);
         }
 
@@ -140,18 +140,18 @@ namespace FindjobnuTesting.JobAgentTests
                 ProfileId = 500,
                 Enabled = true,
                 Frequency = JobAgentFrequency.Weekly,
-                PreferredCategoryIds = new List<int>()
+                PreferredCategoryKeys = new List<string>()
             };
 
             var categories = new List<Category>
             {
-                new Category { CategoryID = 1, Name = "IT" }
+                new Category { CategoryID = 1, CategoryKey = "it", Name = "IT", ListingUrl = "/it" }
             };
 
             var result = JobAgentMapper.ToDto(agent, categories);
 
             Assert.NotNull(result);
-            Assert.Empty(result.PreferredCategoryIds);
+            Assert.Empty(result.PreferredCategoryKeys);
             Assert.Empty(result.PreferredCategoryNames);
         }
 
@@ -164,13 +164,13 @@ namespace FindjobnuTesting.JobAgentTests
                 ProfileId = 600,
                 Enabled = true,
                 Frequency = JobAgentFrequency.Weekly,
-                PreferredCategoryIds = new List<int> { 1, 2 }
+                PreferredCategoryKeys = new List<string> { "it", "finance" }
             };
 
             var result = JobAgentMapper.ToDto(agent, null);
 
             Assert.NotNull(result);
-            Assert.Equal(2, result.PreferredCategoryIds.Count);
+            Assert.Equal(2, result.PreferredCategoryKeys.Count);
             Assert.Empty(result.PreferredCategoryNames);
         }
     }

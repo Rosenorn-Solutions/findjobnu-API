@@ -110,10 +110,10 @@ namespace JobAgentWorkerService.Consumers
 
         private static bool MatchesCategories(JobIndexPosts job, JobAgent agent)
         {
-            if (agent.PreferredCategoryIds == null || agent.PreferredCategoryIds.Count == 0) return true;
+            if (agent.PreferredCategoryKeys == null || agent.PreferredCategoryKeys.Count == 0) return true;
             if (job.Categories == null || job.Categories.Count == 0) return false;
 
-            return job.Categories.Any(c => agent.PreferredCategoryIds.Contains(c.CategoryID));
+            return job.Categories.Any(c => agent.PreferredCategoryKeys.Contains(c.CategoryKey, StringComparer.OrdinalIgnoreCase));
         }
 
         private static bool MatchesKeywords(JobIndexPosts job, JobAgent agent)
@@ -137,9 +137,9 @@ namespace JobAgentWorkerService.Consumers
             {
                 parts.Add($"Locations: {string.Join(", ", agent.PreferredLocations)}");
             }
-            if (agent.PreferredCategoryIds != null && agent.PreferredCategoryIds.Count > 0)
+            if (agent.PreferredCategoryKeys != null && agent.PreferredCategoryKeys.Count > 0)
             {
-                parts.Add($"Categories: {string.Join(", ", agent.PreferredCategoryIds)}");
+                parts.Add($"Categories: {string.Join(", ", agent.PreferredCategoryKeys)}");
             }
             if (agent.IncludeKeywords != null && agent.IncludeKeywords.Count > 0)
             {

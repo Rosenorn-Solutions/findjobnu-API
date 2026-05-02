@@ -25,7 +25,7 @@ namespace FindjobnuService.Endpoints
                 if (agent == null)
                     return TypedResults.NotFound();
                 
-                var categories = await service.GetCategoriesByIdsAsync(agent.PreferredCategoryIds ?? []);
+                var categories = await service.GetCategoriesByKeysAsync(agent.PreferredCategoryKeys ?? []);
                 var dto = JobAgentMapper.ToDto(agent, categories);
                 return dto != null ? TypedResults.Ok(dto) : TypedResults.NotFound();
             }).WithName("GetJobAgent");
@@ -43,10 +43,10 @@ namespace FindjobnuService.Endpoints
                     request.Enabled,
                     frequency,
                     request.PreferredLocations,
-                    request.PreferredCategoryIds,
+                    request.PreferredCategoryKeys,
                     request.IncludeKeywords);
                 
-                var categories = await service.GetCategoriesByIdsAsync(agent.PreferredCategoryIds ?? []);
+                var categories = await service.GetCategoriesByKeysAsync(agent.PreferredCategoryKeys ?? []);
                 var dto = JobAgentMapper.ToDto(agent, categories);
                 return TypedResults.Ok(dto!);
             }).WithName("CreateOrUpdateJobAgent");

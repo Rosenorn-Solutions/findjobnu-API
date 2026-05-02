@@ -52,7 +52,7 @@ public static class JobPostsEndpoints
                 var pagedList = await service.SearchAsync(
                     request.SearchTerms,
                     request.Locations,
-                    request.CategoryIds,
+                    request.CategoryKeys,
                     request.PostedAfter,
                     request.PostedBefore,
                     request.Page,
@@ -68,7 +68,7 @@ public static class JobPostsEndpoints
         })
         .WithName("GetJobPostsBySearch");
 
-        group.MapGet("/{id}", async Task<Results<Ok<JobIndexPostResponse>, BadRequest<string>, NoContent>> (int id, [FromServices] IJobIndexPostsService service) =>
+        group.MapGet("/{id}", async Task<Results<Ok<JobIndexPostResponse>, BadRequest<string>, NoContent>> (long id, [FromServices] IJobIndexPostsService service) =>
         {
             if (id <= 0)
                 return TypedResults.BadRequest("Invalid id.");
@@ -85,6 +85,18 @@ public static class JobPostsEndpoints
             }
         })
         .WithName("GetJobPostsById");
+
+        group.MapGet("/{id}/images/{imageRole}", async Task<Results<FileContentHttpResult, BadRequest<string>, NotFound>> (long id, string imageRole, [FromServices] IJobIndexPostsService service) =>
+        {
+            if (id <= 0)
+                return TypedResults.BadRequest("Invalid id.");
+            if (!string.Equals(imageRole, "banner", StringComparison.OrdinalIgnoreCase) && !string.Equals(imageRole, "footer", StringComparison.OrdinalIgnoreCase))
+                return TypedResults.BadRequest("Invalid image role.");
+
+            var image = await service.GetImageAsync(id, imageRole);
+            return image == null ? TypedResults.NotFound() : TypedResults.File(image.Bytes, image.ContentType);
+        })
+        .WithName("GetJobPostImage");
 
         group.MapGet("/categories", async Task<Results<Ok<CategoriesResponse>, NoContent>> ([FromServices] IJobIndexPostsService service) =>
         {

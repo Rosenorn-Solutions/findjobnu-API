@@ -9,11 +9,11 @@ namespace FindjobnuService.Services
             bool enabled,
             JobAgentFrequency frequency,
             IEnumerable<string>? preferredLocations,
-            IEnumerable<int>? preferredCategoryIds,
+            IEnumerable<string>? preferredCategoryKeys,
             IEnumerable<string>? includeKeywords);
         Task<string?> GetOrCreateUnsubscribeTokenAsync(int profileId);
         Task<bool> UnsubscribeByTokenAsync(string token);
         Task<JobAgent?> GetByProfileIdAsync(int profileId);
-        Task<IEnumerable<Category>> GetCategoriesByIdsAsync(IEnumerable<int> categoryIds);
+        Task<IEnumerable<Category>> GetCategoriesByKeysAsync(IEnumerable<string> categoryKeys);
     }
 }

@@ -96,20 +96,20 @@ namespace FindjobnuTesting.JobAgentTests
         }
 
         [Fact]
-        public async Task GetCategoriesByIdsAsync_ReturnsMatchingCategories()
+        public async Task GetCategoriesByKeysAsync_ReturnsMatchingCategories()
         {
             var ctx = CreateContext();
             var categories = new List<Category>
             {
-                new Category { CategoryID = 1, Name = "IT" },
-                new Category { CategoryID = 2, Name = "Finance" },
-                new Category { CategoryID = 3, Name = "Marketing" }
+                new Category { CategoryID = 1, CategoryKey = "it", Name = "IT", ListingUrl = "/it" },
+                new Category { CategoryID = 2, CategoryKey = "finance", Name = "Finance", ListingUrl = "/finance" },
+                new Category { CategoryID = 3, CategoryKey = "marketing", Name = "Marketing", ListingUrl = "/marketing" }
             };
             ctx.Categories.AddRange(categories);
             await ctx.SaveChangesAsync();
             var svc = CreateService(ctx);
 
-            var result = await svc.GetCategoriesByIdsAsync(new[] { 1, 3 });
+            var result = await svc.GetCategoriesByKeysAsync(new[] { "it", "marketing" });
 
             Assert.NotNull(result);
             Assert.Equal(2, result.Count());
@@ -119,42 +119,42 @@ namespace FindjobnuTesting.JobAgentTests
         }
 
         [Fact]
-        public async Task GetCategoriesByIdsAsync_ReturnsEmpty_WhenNoMatches()
+        public async Task GetCategoriesByKeysAsync_ReturnsEmpty_WhenNoMatches()
         {
             var ctx = CreateContext();
             var categories = new List<Category>
             {
-                new Category { CategoryID = 1, Name = "IT" }
+                new Category { CategoryID = 1, CategoryKey = "it", Name = "IT", ListingUrl = "/it" }
             };
             ctx.Categories.AddRange(categories);
             await ctx.SaveChangesAsync();
             var svc = CreateService(ctx);
 
-            var result = await svc.GetCategoriesByIdsAsync(new[] { 99, 100 });
+            var result = await svc.GetCategoriesByKeysAsync(new[] { "missing-a", "missing-b" });
 
             Assert.NotNull(result);
             Assert.Empty(result);
         }
 
         [Fact]
-        public async Task GetCategoriesByIdsAsync_ReturnsEmpty_WhenIdsIsNull()
+        public async Task GetCategoriesByKeysAsync_ReturnsEmpty_WhenKeysIsNull()
         {
             var ctx = CreateContext();
             var svc = CreateService(ctx);
 
-            var result = await svc.GetCategoriesByIdsAsync(null!);
+            var result = await svc.GetCategoriesByKeysAsync(null!);
 
             Assert.NotNull(result);
             Assert.Empty(result);
         }
 
         [Fact]
-        public async Task GetCategoriesByIdsAsync_ReturnsEmpty_WhenIdsIsEmpty()
+        public async Task GetCategoriesByKeysAsync_ReturnsEmpty_WhenKeysIsEmpty()
         {
             var ctx = CreateContext();
             var svc = CreateService(ctx);
 
-            var result = await svc.GetCategoriesByIdsAsync(new List<int>());
+            var result = await svc.GetCategoriesByKeysAsync(new List<string>());
 
             Assert.NotNull(result);
             Assert.Empty(result);
