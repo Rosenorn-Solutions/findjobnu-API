@@ -195,6 +195,7 @@ namespace FindjobnuService.Repositories.Context
 
             modelBuilder.Entity<JobAgent>()
                 .Property(j => j.PreferredCategoryKeys)
+                .HasColumnName("PreferredCategoryIds")
                 .HasConversion(keywordsConverter)
                 .Metadata.SetValueComparer(keywordsComparer);
 
